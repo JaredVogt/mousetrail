@@ -1,0 +1,36 @@
+# Compiled binaries
+MouseTrail
+MouseTrail-Release
+
+# macOS app bundles
+MouseTrail.app/
+MouseTrail-Release.app/
+
+# macOS system files
+.DS_Store
+
+# Backup files
+*.backup
+*.menubar-backup
+*.optimized-backup
+
+# Log files
+*.log
+
+# Claude local settings
+.claude/settings.local.json
+
+# Xcode build artifacts
+build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Temporary files
+*.swp
+*~
+.*.sw?
