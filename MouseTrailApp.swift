@@ -18,6 +18,16 @@ struct MouseTrailApp: App {
                 },
                 onStopInfoUpdates: { [weak appDelegate] in
                     appDelegate?.stopInfoUpdates()
+                },
+                onShowHelp: { [weak appDelegate] in
+                    appDelegate?.showHelpWindow()
+                },
+                onRestart: {
+                    guard let bundlePath = Bundle.main.executablePath else { return }
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: bundlePath)
+                    try? process.run()
+                    NSApplication.shared.terminate(nil)
                 }
             )
         } label: {

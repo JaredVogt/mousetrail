@@ -8,6 +8,8 @@ struct MenuBarSettingsView: View {
     var onRequestPermission: () -> Void
     var onStartInfoUpdates: () -> Void
     var onStopInfoUpdates: () -> Void
+    var onShowHelp: () -> Void
+    var onRestart: () -> Void
 
     @State private var debugLogExpanded = false
 
@@ -159,6 +161,14 @@ struct MenuBarSettingsView: View {
                     get: { LaunchAtLoginService.shared.isEnabled },
                     set: { _ in LaunchAtLoginService.shared.toggle() }
                 ))
+
+                Button("View README") {
+                    onShowHelp()
+                }
+
+                Button("Restart") {
+                    onRestart()
+                }
 
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)

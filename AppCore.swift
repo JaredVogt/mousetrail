@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-10 09:50:39"
+let BUILD_TIMESTAMP = "2026-04-10 10:18:15"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -1907,6 +1907,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let isMain = s == NSScreen.main ? " (main)" : ""
             return "[\(i+1)] \(Int(s.frame.width))×\(Int(s.frame.height))\(isMain)"
         }
+    }
+
+    // MARK: - Help Window
+
+    var helpWindow: NSWindow?
+
+    func showHelpWindow() {
+        if let existing = helpWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let hostingView = NSHostingView(rootView: HelpView())
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 650),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "MouseTrail README"
+        window.contentView = hostingView
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        helpWindow = window
     }
 
     func requestScreenRecordingPermission() {
