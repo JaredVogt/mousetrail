@@ -62,6 +62,17 @@ struct MenuBarSettingsView: View {
 
                 Divider()
 
+                // MARK: - Trail Motion
+                SectionHeader("Trail Motion")
+                Picker("Algorithm", selection: $settings.trailAlgorithm) {
+                    ForEach(TrailAlgorithm.allCases, id: \.self) { algorithm in
+                        Text(algorithm.displayName).tag(algorithm)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Divider()
+
                 // MARK: - Trail Width
                 SectionHeader("Trail Width")
                 SettingsSlider("Max Width", value: $settings.maxWidth, range: 1...20, format: "%.1f")
@@ -542,4 +553,3 @@ private struct GradientSlider: View {
         }
     }
 }
-

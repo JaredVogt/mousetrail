@@ -16,12 +16,15 @@
 import Cocoa
 import QuartzCore
 import ScreenCaptureKit
-import CoreVideo
-import CoreMedia
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-10 00:37:47"
+let BUILD_TIMESTAMP = "2026-04-10 09:09:17"
+
+@inline(__always)
+func currentMonotonicTime() -> TimeInterval {
+    ProcessInfo.processInfo.systemUptime
+}
 
 /**
  * TrailPoint - Represents a single point in the mouse trail
@@ -32,6 +35,17 @@ struct TrailPoint {
     let velocity: CGFloat // Speed in pixels per second
 }
 
+struct MouseSample {
+    let location: NSPoint
+    let timestamp: TimeInterval
+}
+
+struct SpringCursorState {
+    var position: NSPoint
+    var velocity: CGVector
+    var timestamp: TimeInterval
+}
+
 /**
  * TrailView - Hardware-accelerated view that renders a smooth mouse trail
  * 
@@ -40,8 +54,11 @@ struct TrailPoint {
  */
 class TrailView: NSView {
     /// Maximum number of points to keep in trail
-    let maxPoints = 30
-    let minimumPointDistance: CGFloat = 0.75
+    let maxPoints = 180
+    let fullWidthPointCount: CGFloat = 40
+    let minimumPointDistance: CGFloat = 0.5
+    let maximumRenderSegmentLength: CGFloat = 6.0
+    let renderSmoothingPasses = 2
     let interpolationAlpha: CGFloat = 0.5
     
     /// Fade time in seconds for red trail
@@ -258,6 +275,106 @@ class TrailView: NSView {
         )
     }
 
+    private func add(_ lhs: NSPoint, _ rhs: NSPoint) -> NSPoint {
+        NSPoint(x: lhs.x + rhs.x, y: lhs.y + rhs.y)
+    }
+
+    private func subtract(_ lhs: NSPoint, _ rhs: NSPoint) -> NSPoint {
+        NSPoint(x: lhs.x - rhs.x, y: lhs.y - rhs.y)
+    }
+
+    private func scale(_ point: NSPoint, by scalar: CGFloat) -> NSPoint {
+        NSPoint(x: point.x * scalar, y: point.y * scalar)
+    }
+
+    private func extrapolatedEndpoint(from point: NSPoint, toward neighbor: NSPoint) -> NSPoint {
+        add(point, subtract(point, neighbor))
+    }
+
+    private func weightedAverage(_ weightedPoints: [(NSPoint, CGFloat)]) -> NSPoint {
+        var totalWeight: CGFloat = 0
+        var sumX: CGFloat = 0
+        var sumY: CGFloat = 0
+
+        for (point, weight) in weightedPoints {
+            totalWeight += weight
+            sumX += point.x * weight
+            sumY += point.y * weight
+        }
+
+        guard totalWeight > 0 else { return .zero }
+        return NSPoint(x: sumX / totalWeight, y: sumY / totalWeight)
+    }
+
+    private func densifiedPositions(from positions: [NSPoint], maximumSegmentLength: CGFloat) -> [NSPoint] {
+        guard positions.count >= 2 else { return positions }
+
+        var densePositions: [NSPoint] = [positions[0]]
+
+        for index in 0..<(positions.count - 1) {
+            let start = positions[index]
+            let end = positions[index + 1]
+            let distance = pointDistance(start, end)
+            let subdivisions = max(1, Int(ceil(distance / maximumSegmentLength)))
+
+            if subdivisions > 1 {
+                for step in 1..<subdivisions {
+                    let factor = CGFloat(step) / CGFloat(subdivisions)
+                    densePositions.append(interpolate(start, end, factor: factor))
+                }
+            }
+
+            densePositions.append(end)
+        }
+
+        return densePositions
+    }
+
+    private func smoothedPositions(from positions: [NSPoint], passes: Int) -> [NSPoint] {
+        guard positions.count >= 3, passes > 0 else { return positions }
+
+        var currentPositions = positions
+
+        for _ in 0..<passes {
+            guard currentPositions.count >= 3 else { break }
+
+            var nextPositions = currentPositions
+
+            for index in 1..<(currentPositions.count - 1) {
+                if index >= 2 && (index + 2) < currentPositions.count {
+                    nextPositions[index] = weightedAverage([
+                        (currentPositions[index - 2], 1),
+                        (currentPositions[index - 1], 4),
+                        (currentPositions[index], 6),
+                        (currentPositions[index + 1], 4),
+                        (currentPositions[index + 2], 1)
+                    ])
+                } else {
+                    nextPositions[index] = weightedAverage([
+                        (currentPositions[index - 1], 1),
+                        (currentPositions[index], 2),
+                        (currentPositions[index + 1], 1)
+                    ])
+                }
+            }
+
+            nextPositions[0] = positions[0]
+            nextPositions[nextPositions.count - 1] = positions[positions.count - 1]
+            currentPositions = nextPositions
+        }
+
+        return currentPositions
+    }
+
+    private func renderPositions(from trailPoints: [TrailPoint]) -> [NSPoint] {
+        let rawPositions = trailPoints.map(\.position)
+        let densePositions = densifiedPositions(
+            from: rawPositions,
+            maximumSegmentLength: maximumRenderSegmentLength
+        )
+        return smoothedPositions(from: densePositions, passes: renderSmoothingPasses)
+    }
+
     private func parameterizedTime(from start: NSPoint, to end: NSPoint, previous: CGFloat) -> CGFloat {
         let distance = max(pointDistance(start, end), 0.0001)
         return previous + pow(distance, interpolationAlpha)
@@ -286,6 +403,42 @@ class TrailView: NSView {
         return blend(b1, b2, t0: t1, t1: t2, t: interpolatedT)
     }
 
+    private func catmullRomTangents(
+        _ p0: NSPoint,
+        _ p1: NSPoint,
+        _ p2: NSPoint,
+        _ p3: NSPoint
+    ) -> (start: NSPoint, end: NSPoint) {
+        let t0: CGFloat = 0
+        let t1 = parameterizedTime(from: p0, to: p1, previous: t0)
+        let t2 = parameterizedTime(from: p1, to: p2, previous: t1)
+        let t3 = parameterizedTime(from: p2, to: p3, previous: t2)
+
+        let dt10 = max(t1 - t0, 0.0001)
+        let dt20 = max(t2 - t0, 0.0001)
+        let dt21 = max(t2 - t1, 0.0001)
+        let dt31 = max(t3 - t1, 0.0001)
+        let dt32 = max(t3 - t2, 0.0001)
+
+        let startTerm1 = scale(subtract(p1, p0), by: 1.0 / dt10)
+        let startTerm2 = scale(subtract(p2, p0), by: 1.0 / dt20)
+        let startTerm3 = scale(subtract(p2, p1), by: 1.0 / dt21)
+        let startTangent = scale(
+            add(subtract(startTerm1, startTerm2), startTerm3),
+            by: dt21
+        )
+
+        let endTerm1 = scale(subtract(p2, p1), by: 1.0 / dt21)
+        let endTerm2 = scale(subtract(p3, p1), by: 1.0 / dt31)
+        let endTerm3 = scale(subtract(p3, p2), by: 1.0 / dt32)
+        let endTangent = scale(
+            add(subtract(endTerm1, endTerm2), endTerm3),
+            by: dt21
+        )
+
+        return (start: startTangent, end: endTangent)
+    }
+
     private func clearTrailLayers(_ layers: [CAShapeLayer]) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -294,6 +447,15 @@ class TrailView: NSView {
             layer.shadowPath = nil
         }
         CATransaction.commit()
+    }
+
+    func resetTrail() {
+        points.removeAll()
+        startPosition = nil
+        isTrailActive = false
+        lastMovementTime = 0
+        clearTrailLayers([outerGlowLayer, middleGlowLayer, coreLayer])
+        clearTrailLayers([blueOuterGlowLayer, blueMiddleGlowLayer, blueCoreLayer])
     }
 
     private func applyLineWidths(for trailPoints: [TrailPoint], to layers: [CAShapeLayer], isBlue: Bool) {
@@ -308,7 +470,7 @@ class TrailView: NSView {
             return
         }
 
-        let progress = CGFloat(trailPoints.count) / CGFloat(maxPoints)
+        let progress = min(CGFloat(trailPoints.count) / fullWidthPointCount, 1.0)
         let trailWidth = baseWidth + (maxWidth - baseWidth) * progress
         layers[0].lineWidth = trailWidth * 3.0
         layers[1].lineWidth = trailWidth * 1.8
@@ -326,7 +488,7 @@ class TrailView: NSView {
 
     /// Add a new point to the trail
     @discardableResult
-    func addPoint(_ point: NSPoint, at now: TimeInterval = Date().timeIntervalSince1970) -> Bool {
+    func addPoint(_ point: NSPoint, at now: TimeInterval = currentMonotonicTime()) -> Bool {
         // Convert screen coordinates to view coordinates
         guard let window = self.window else { return false }
         
@@ -410,7 +572,7 @@ class TrailView: NSView {
     }
     
     /// Check if trail has visible points
-    func hasVisiblePoints(at now: TimeInterval = Date().timeIntervalSince1970) -> Bool {
+    func hasVisiblePoints(at now: TimeInterval = currentMonotonicTime()) -> Bool {
         return points.contains { now - $0.timestamp < fadeTime }
     }
     
@@ -436,7 +598,7 @@ class TrailView: NSView {
     }
     
     /// Update the trail path
-    func updateTrail(at now: TimeInterval = Date().timeIntervalSince1970) {
+    func updateTrail(at now: TimeInterval = currentMonotonicTime()) {
         // Remove old points
         points.removeAll { now - $0.timestamp > fadeTime }
 
@@ -456,32 +618,31 @@ class TrailView: NSView {
     
     /// Build trail path for given points and layers
     private func buildTrailPath(for trailPoints: [TrailPoint], layers: [CAShapeLayer], isBlue: Bool = false) {
-        guard trailPoints.count >= 2 else {
+        let renderPositions = renderPositions(from: trailPoints)
+
+        guard renderPositions.count >= 2 else {
             clearTrailLayers(layers)
             return
         }
         
-        // Create single continuous path through all points
+        // Round the sampled centerline before fitting curves so quick arcs do not
+        // collapse into visible straight shortcuts between sparse input samples.
         let path = CGMutablePath()
-        path.move(to: trailPoints[0].position)
+        path.move(to: renderPositions[0])
 
-        for i in 0..<(trailPoints.count - 1) {
-            let p0 = i > 0 ? trailPoints[i - 1].position : trailPoints[i].position
-            let p1 = trailPoints[i].position
-            let p2 = trailPoints[i + 1].position
-            let p3 = (i + 2 < trailPoints.count) ? trailPoints[i + 2].position : trailPoints[i + 1].position
-
-            let avgVelocity = (trailPoints[i].velocity + trailPoints[i + 1].velocity) / 2.0
-            let minSteps = isBlue ? 4 : 5
-            let maxSteps = isBlue ? 10 : 14
-            let velocityFactor = min(avgVelocity / 1200.0, 1.0)
-            let steps = max(1, Int(CGFloat(minSteps) + (CGFloat(maxSteps - minSteps) * velocityFactor)))
-
-            for step in 1...steps {
-                let t = CGFloat(step) / CGFloat(steps)
-                let point = centripetalCatmullRomPoint(p0, p1, p2, p3, t: t)
-                path.addLine(to: point)
-            }
+        for i in 0..<(renderPositions.count - 1) {
+            let p1 = renderPositions[i]
+            let p2 = renderPositions[i + 1]
+            let p0 = i > 0
+                ? renderPositions[i - 1]
+                : extrapolatedEndpoint(from: p1, toward: p2)
+            let p3 = (i + 2 < renderPositions.count)
+                ? renderPositions[i + 2]
+                : extrapolatedEndpoint(from: p2, toward: p1)
+            let tangents = catmullRomTangents(p0, p1, p2, p3)
+            let control1 = add(p1, scale(tangents.start, by: 1.0 / 3.0))
+            let control2 = subtract(p2, scale(tangents.end, by: 1.0 / 3.0))
+            path.addCurve(to: p2, control1: control1, control2: control2)
         }
         
         CATransaction.begin()
@@ -1314,11 +1475,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      */
     // MARK: - Event Monitoring Properties
 
-    /// Global event monitor for mouse movement
-    var eventMonitor: Any?
+    /// Global event monitors for mouse movement and clicks
+    var eventMonitors: [Any] = []
 
-    /// Timer for smooth UI updates at 60 FPS
+    /// Fallback timer if display-linked updates are unavailable
     var updateTimer: Timer?
+
+    /// Display-linked animation driver for smooth refresh-synchronized updates
+    var displayLink: CADisplayLink?
     
     // MARK: - Menu Bar Properties
 
@@ -1361,9 +1525,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     /// Current motion state
     var motionState: MotionState = .idle
+
+    /// Currently active algorithm backing the trail runtime.
+    var activeTrailAlgorithm: TrailAlgorithm?
     
     /// Last mouse movement timestamp
     var lastMouseMovement: TimeInterval = 0
+
+    /// State for the literal spring-based follower.
+    var springCursorState: SpringCursorState?
+
+    let springCursorResponse: CGFloat = 16.0
+    let springCursorDampingRatio: CGFloat = 1.08
+    let springCursorMaxStep: TimeInterval = 1.0 / 240.0
+    let springCursorSnapDistance: CGFloat = 240.0
+    let springCursorSnapInterval: TimeInterval = 0.15
+
+    /// Raw cursor samples used for delayed, spline-based trail playback.
+    var rawMouseSamples: [MouseSample] = []
+
+    /// Playback cursor position in the raw-sample timeline.
+    var visualPlaybackTime: TimeInterval?
+
+    /// Keep the trail slightly behind the real cursor so we can shape it with future samples.
+    let visualPlaybackDelay: TimeInterval = 0.075
+
+    /// Emit synthetic trail points at a higher rate than incoming mouse events.
+    let visualPlaybackSampleInterval: TimeInterval = 1.0 / 240.0
+
+    /// Keep enough history to interpolate and fade the trail without unbounded growth.
+    let rawMouseSampleHistoryDuration: TimeInterval = 1.5
     
     /// Idle timeout in seconds
     let idleTimeout: TimeInterval = 0.1
@@ -1375,8 +1566,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Latest mouse location received from the global monitor
     var latestMouseLocation: NSPoint = .zero
 
-    /// Whether a new mouse sample needs to be applied on the next animation tick
-    var hasPendingMouseSample = false
+    /// Pending mouse samples waiting to be drained on the next display tick
+    var pendingMouseSamples: [MouseSample] = []
+    let maxPendingMouseSamples = 256
 
     private func ensureRippleManager() -> RippleManager {
         if let rippleManager {
@@ -1402,11 +1594,285 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         trailView.updateLayerProperties()
     }
 
-    private func samplePendingMouseMovement(at now: TimeInterval) {
-        guard hasPendingMouseSample else { return }
+    private func handleTrailSettingsChanged() {
+        applySettingsToTrailViews()
 
-        hasPendingMouseSample = false
-        updateTrailPosition(at: latestMouseLocation, timestamp: now)
+        if activeTrailAlgorithm != settings.trailAlgorithm {
+            synchronizeTrailRuntime(clearTrail: true)
+        } else {
+            updateMouseCoalescingMode(for: settings.trailAlgorithm)
+        }
+    }
+
+    private func updateMouseCoalescingMode(for algorithm: TrailAlgorithm) {
+        NSEvent.isMouseCoalescingEnabled = (algorithm == .spring)
+    }
+
+    private func resetTrailRuntimeState(
+        to algorithm: TrailAlgorithm,
+        at timestamp: TimeInterval,
+        clearTrail: Bool
+    ) {
+        pendingMouseSamples.removeAll(keepingCapacity: true)
+        springCursorState = nil
+        rawMouseSamples.removeAll()
+        visualPlaybackTime = nil
+        activeTrailAlgorithm = algorithm
+        updateMouseCoalescingMode(for: algorithm)
+
+        if clearTrail {
+            for trailView in trailViews {
+                trailView.resetTrail()
+            }
+        }
+
+        switch algorithm {
+        case .spring:
+            resetSpringTrail(to: latestMouseLocation, timestamp: timestamp)
+        case .smooth:
+            resetVisualPlayback(to: latestMouseLocation, timestamp: timestamp)
+        }
+    }
+
+    private func synchronizeTrailRuntime(clearTrail: Bool) {
+        let now = currentMonotonicTime()
+        latestMouseLocation = NSEvent.mouseLocation
+        lastMouseMovement = now
+        resetTrailRuntimeState(to: settings.trailAlgorithm, at: now, clearTrail: clearTrail)
+
+        if motionState == .active {
+            switch activeTrailAlgorithm ?? settings.trailAlgorithm {
+            case .spring:
+                advanceSpringTrail(toward: latestMouseLocation, timestamp: now)
+            case .smooth:
+                emitDelayedTrailPoints(upTo: now)
+            }
+            updateTrailAnimation(at: now)
+        }
+    }
+
+    private func pointDistance(_ lhs: NSPoint, _ rhs: NSPoint) -> CGFloat {
+        let dx = lhs.x - rhs.x
+        let dy = lhs.y - rhs.y
+        return sqrt(dx * dx + dy * dy)
+    }
+
+    private func interpolate(_ start: NSPoint, _ end: NSPoint, factor: CGFloat) -> NSPoint {
+        NSPoint(
+            x: start.x + ((end.x - start.x) * factor),
+            y: start.y + ((end.y - start.y) * factor)
+        )
+    }
+
+    private func extrapolatedEndpoint(from point: NSPoint, toward neighbor: NSPoint) -> NSPoint {
+        NSPoint(
+            x: point.x + (point.x - neighbor.x),
+            y: point.y + (point.y - neighbor.y)
+        )
+    }
+
+    private func resetSpringTrail(to location: NSPoint, timestamp: TimeInterval) {
+        springCursorState = SpringCursorState(
+            position: location,
+            velocity: .zero,
+            timestamp: timestamp
+        )
+    }
+
+    private func integrateSpringTrail(
+        _ state: inout SpringCursorState,
+        toward target: NSPoint,
+        deltaTime: TimeInterval
+    ) {
+        let dt = CGFloat(deltaTime)
+        guard dt > 0 else { return }
+
+        let stiffness = springCursorResponse * springCursorResponse
+        let damping = 2 * springCursorDampingRatio * springCursorResponse
+
+        let accelerationX = ((target.x - state.position.x) * stiffness) - (state.velocity.dx * damping)
+        let accelerationY = ((target.y - state.position.y) * stiffness) - (state.velocity.dy * damping)
+
+        state.velocity.dx += accelerationX * dt
+        state.velocity.dy += accelerationY * dt
+        state.position.x += state.velocity.dx * dt
+        state.position.y += state.velocity.dy * dt
+    }
+
+    private func advanceSpringTrail(toward target: NSPoint, timestamp: TimeInterval) {
+        guard var springCursorState else {
+            resetSpringTrail(to: target, timestamp: timestamp)
+            return
+        }
+
+        let deltaTime = max(timestamp - springCursorState.timestamp, 0)
+        let distanceToTarget = pointDistance(springCursorState.position, target)
+
+        if deltaTime <= 0 {
+            return
+        }
+
+        if deltaTime > springCursorSnapInterval || distanceToTarget > springCursorSnapDistance {
+            resetSpringTrail(to: target, timestamp: timestamp)
+            return
+        }
+
+        let stepCount = max(1, Int(ceil(deltaTime / springCursorMaxStep)))
+        let stepDuration = deltaTime / Double(stepCount)
+
+        for _ in 0..<stepCount {
+            integrateSpringTrail(&springCursorState, toward: target, deltaTime: stepDuration)
+            springCursorState.timestamp += stepDuration
+            updateTrailPosition(at: springCursorState.position, timestamp: springCursorState.timestamp)
+        }
+
+        self.springCursorState = springCursorState
+    }
+
+    private func uniformCatmullRomPoint(
+        _ p0: NSPoint,
+        _ p1: NSPoint,
+        _ p2: NSPoint,
+        _ p3: NSPoint,
+        t: CGFloat
+    ) -> NSPoint {
+        let t2 = t * t
+        let t3 = t2 * t
+
+        let x = 0.5 * (
+            (2.0 * p1.x) +
+            (-p0.x + p2.x) * t +
+            ((2.0 * p0.x) - (5.0 * p1.x) + (4.0 * p2.x) - p3.x) * t2 +
+            (-p0.x + (3.0 * p1.x) - (3.0 * p2.x) + p3.x) * t3
+        )
+
+        let y = 0.5 * (
+            (2.0 * p1.y) +
+            (-p0.y + p2.y) * t +
+            ((2.0 * p0.y) - (5.0 * p1.y) + (4.0 * p2.y) - p3.y) * t2 +
+            (-p0.y + (3.0 * p1.y) - (3.0 * p2.y) + p3.y) * t3
+        )
+
+        return NSPoint(x: x, y: y)
+    }
+
+    private func resetVisualPlayback(to location: NSPoint, timestamp: TimeInterval) {
+        rawMouseSamples = [MouseSample(location: location, timestamp: timestamp)]
+        visualPlaybackTime = timestamp
+    }
+
+    private func appendRawMouseSample(_ sample: MouseSample) {
+        if let lastSample = rawMouseSamples.last {
+            if sample.timestamp <= lastSample.timestamp {
+                rawMouseSamples[rawMouseSamples.count - 1] = sample
+                return
+            }
+
+            if pointDistance(lastSample.location, sample.location) < 0.01 {
+                rawMouseSamples[rawMouseSamples.count - 1] = sample
+                return
+            }
+        }
+
+        rawMouseSamples.append(sample)
+    }
+
+    private func interpolatedRawMouseLocation(at playbackTime: TimeInterval) -> NSPoint? {
+        guard !rawMouseSamples.isEmpty else { return nil }
+
+        if playbackTime <= rawMouseSamples[0].timestamp {
+            return rawMouseSamples[0].location
+        }
+
+        guard let lastSample = rawMouseSamples.last else { return nil }
+        if playbackTime >= lastSample.timestamp {
+            return lastSample.location
+        }
+
+        for index in 0..<(rawMouseSamples.count - 1) {
+            let startSample = rawMouseSamples[index]
+            let endSample = rawMouseSamples[index + 1]
+
+            guard playbackTime >= startSample.timestamp, playbackTime <= endSample.timestamp else {
+                continue
+            }
+
+            let duration = max(endSample.timestamp - startSample.timestamp, 0.0001)
+            let t = CGFloat((playbackTime - startSample.timestamp) / duration)
+            let p1 = startSample.location
+            let p2 = endSample.location
+            let p0 = index > 0
+                ? rawMouseSamples[index - 1].location
+                : extrapolatedEndpoint(from: p1, toward: p2)
+            let p3 = (index + 2 < rawMouseSamples.count)
+                ? rawMouseSamples[index + 2].location
+                : extrapolatedEndpoint(from: p2, toward: p1)
+
+            return uniformCatmullRomPoint(p0, p1, p2, p3, t: t)
+        }
+
+        return lastSample.location
+    }
+
+    private func pruneRawMouseSamples(relativeTo now: TimeInterval) {
+        let cutoff = now - rawMouseSampleHistoryDuration
+        guard rawMouseSamples.count > 2 else { return }
+
+        while rawMouseSamples.count > 2 && rawMouseSamples[1].timestamp < cutoff {
+            rawMouseSamples.removeFirst()
+        }
+    }
+
+    private func emitDelayedTrailPoints(upTo now: TimeInterval) {
+        guard rawMouseSamples.count >= 2 else { return }
+
+        let playbackEnd = min(now - visualPlaybackDelay, rawMouseSamples[rawMouseSamples.count - 1].timestamp)
+        guard playbackEnd.isFinite else { return }
+
+        if visualPlaybackTime == nil {
+            visualPlaybackTime = rawMouseSamples[0].timestamp
+        }
+
+        guard let startPlaybackTime = visualPlaybackTime, playbackEnd > startPlaybackTime else {
+            return
+        }
+
+        var playbackTime = startPlaybackTime
+        while playbackTime < playbackEnd {
+            playbackTime = min(playbackTime + visualPlaybackSampleInterval, playbackEnd)
+
+            if let location = interpolatedRawMouseLocation(at: playbackTime) {
+                updateTrailPosition(at: location, timestamp: playbackTime + visualPlaybackDelay)
+            }
+        }
+
+        visualPlaybackTime = playbackEnd
+        pruneRawMouseSamples(relativeTo: now)
+    }
+
+    private func enqueueMouseSample(location: NSPoint, timestamp: TimeInterval) {
+        latestMouseLocation = location
+        pendingMouseSamples.append(MouseSample(location: location, timestamp: timestamp))
+
+        if pendingMouseSamples.count > maxPendingMouseSamples {
+            pendingMouseSamples.removeFirst(pendingMouseSamples.count - maxPendingMouseSamples)
+        }
+    }
+
+    private func drainPendingMouseSamples() {
+        guard !pendingMouseSamples.isEmpty else { return }
+
+        let samples = pendingMouseSamples
+        pendingMouseSamples.removeAll(keepingCapacity: true)
+
+        for sample in samples {
+            switch activeTrailAlgorithm ?? settings.trailAlgorithm {
+            case .spring:
+                advanceSpringTrail(toward: sample.location, timestamp: sample.timestamp)
+            case .smooth:
+                appendRawMouseSample(sample)
+            }
+        }
     }
 
     private func updateTrailAnimation(at now: TimeInterval) {
@@ -1484,6 +1950,52 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func installEventMonitors() {
+        // Monitor mouse movement, including drag events so the trail stays continuous.
+        let movementMask: NSEvent.EventTypeMask = [
+            .mouseMoved,
+            .leftMouseDragged,
+            .rightMouseDragged,
+            .otherMouseDragged
+        ]
+        if let movementMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: movementMask,
+            handler: { [weak self] event in
+                self?.handleMouseMovement(event)
+            }
+        ) {
+            eventMonitors.append(movementMonitor)
+        }
+        if let movementLocalMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: movementMask,
+            handler: { [weak self] event in
+                self?.handleMouseMovement(event)
+                return event
+            }
+        ) {
+            eventMonitors.append(movementLocalMonitor)
+        }
+
+        // Monitor mouse clicks for ripple effect in both active and inactive states.
+        if let clickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: .leftMouseDown,
+            handler: { [weak self] event in
+                self?.handleMouseClick(event)
+            }
+        ) {
+            eventMonitors.append(clickMonitor)
+        }
+        if let clickLocalMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: .leftMouseDown,
+            handler: { [weak self] event in
+                self?.handleMouseClick(event)
+                return event
+            }
+        ) {
+            eventMonitors.append(clickLocalMonitor)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("[debug] MouseTrail starting...")
 
@@ -1494,6 +2006,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         latestMouseLocation = NSEvent.mouseLocation
+        let launchTimestamp = currentMonotonicTime()
+        lastMouseMovement = launchTimestamp
 
         // Wire settings callbacks
         settings.restore()
@@ -1501,7 +2015,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         isTrailVisible = settings.isTrailVisible
         isRippleEnabled = settings.isRippleEnabled
         settings.onChanged = { [weak self] in
-            self?.applySettingsToTrailViews()
+            self?.handleTrailSettingsChanged()
         }
         settings.onVisibilityChanged = { [weak self] in
             self?.applyVisibilitySettings()
@@ -1509,6 +2023,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Create trail windows for each screen
         createTrailWindows()
+        handleTrailSettingsChanged()
 
         debugLog("MouseTrail initialized successfully")
         debugLog("Trail windows created: \(trailWindows.count)")
@@ -1516,16 +2031,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Cache initial system state
         updateCachedSystemInfo()
-
-        // Monitor global mouse movement
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
-            self?.handleMouseMovement()
-        }
-
-        // Monitor global mouse clicks for ripple effect
-        NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            self?.handleMouseClick(event)
-        }
+        installEventMonitors()
 
         // Monitor app switching
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -1567,17 +2073,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /**
      * Handles mouse movement events with motion detection
      */
-    func handleMouseMovement() {
-        let now = Date().timeIntervalSince1970
-        lastMouseMovement = now
-        latestMouseLocation = NSEvent.mouseLocation
-        hasPendingMouseSample = true
+    func handleMouseMovement(_ event: NSEvent) {
+        let sample = MouseSample(location: NSEvent.mouseLocation, timestamp: event.timestamp)
+        lastMouseMovement = sample.timestamp
+        enqueueMouseSample(location: sample.location, timestamp: sample.timestamp)
         
         // Transition to active state if we were idle
         if motionState == .idle {
+            resetTrailRuntimeState(to: settings.trailAlgorithm, at: sample.timestamp, clearTrail: false)
             transitionToActiveState()
-            samplePendingMouseMovement(at: now)
-            updateTrailAnimation(at: now)
+            drainPendingMouseSamples()
+            switch activeTrailAlgorithm ?? settings.trailAlgorithm {
+            case .spring:
+                advanceSpringTrail(toward: latestMouseLocation, timestamp: currentMonotonicTime())
+            case .smooth:
+                emitDelayedTrailPoints(upTo: currentMonotonicTime())
+            }
+            updateTrailAnimation(at: currentMonotonicTime())
         }
     }
     
@@ -1593,23 +2105,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     /**
-     * Sets up CVDisplayLink for smooth vsync-synchronized animation
+     * Sets up a refresh-synchronized display link for smooth animation.
      */
     func setupDisplayLink() {
-        // Stop any existing timer
-        updateTimer?.invalidate()
-        updateTimer = nil
-        
-        // Use 60Hz timer to match typical display refresh rate
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { [weak self] _ in
+        stopAnimationDriver()
+
+        if #available(macOS 14.0, *), let displayWindow = trailWindows.first {
+            let link = displayWindow.displayLink(target: self, selector: #selector(handleDisplayLink(_:)))
+            link.add(to: .main, forMode: .common)
+            displayLink = link
+            return
+        }
+
+        debugLog("Falling back to 60Hz timer because AppKit display links are unavailable")
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.updateActiveAnimation()
         }
-        
-        // Set timer to high precision mode
+
         if let timer = updateTimer {
-            timer.tolerance = 0.001 // Small tolerance for smoothness
+            timer.tolerance = 0.001
             RunLoop.current.add(timer, forMode: .common)
         }
+    }
+
+    @objc private func handleDisplayLink(_ displayLink: CADisplayLink) {
+        updateActiveAnimation()
+    }
+
+    private func stopAnimationDriver() {
+        updateTimer?.invalidate()
+        updateTimer = nil
+
+        displayLink?.invalidate()
+        displayLink = nil
     }
     
     /**
@@ -1617,7 +2145,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      */
     func transitionToIdleState() {
         guard motionState == .active else { return }
-        let now = Date().timeIntervalSince1970
+        let now = currentMonotonicTime()
         
         // Check if trail still has visible points
         var hasVisibleTrail = false
@@ -1637,18 +2165,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Trail is fully faded, safe to go idle
         motionState = .idle
+        springCursorState = nil
+        rawMouseSamples.removeAll()
+        visualPlaybackTime = nil
+        pendingMouseSamples.removeAll(keepingCapacity: true)
         
-        // Stop the update timer to save CPU
-        updateTimer?.invalidate()
-        updateTimer = nil
+        // Stop the animation driver to save CPU
+        stopAnimationDriver()
     }
     
     /**
      * Update only during active animation (called by timer)
      */
     func updateActiveAnimation() {
-        let now = Date().timeIntervalSince1970
-        samplePendingMouseMovement(at: now)
+        let now = currentMonotonicTime()
+        drainPendingMouseSamples()
+        switch activeTrailAlgorithm ?? settings.trailAlgorithm {
+        case .spring:
+            advanceSpringTrail(toward: latestMouseLocation, timestamp: now)
+        case .smooth:
+            emitDelayedTrailPoints(upTo: now)
+        }
         updateTrailAnimation(at: now)
 
         // Update ripple animations
@@ -1674,6 +2211,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func screenConfigurationChanged(_ notification: Notification) {
         createTrailWindows()
         updateCachedSystemInfo()
+        resetTrailRuntimeState(to: settings.trailAlgorithm, at: currentMonotonicTime(), clearTrail: false)
     }
 
     /// Apply current settings to all TrailView instances
@@ -1811,15 +2349,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      * is good practice and prevents potential issues.
      */
     func applicationWillTerminate(_ notification: Notification) {
-        updateTimer?.invalidate()
-        updateTimer = nil
+        stopAnimationDriver()
         infoUpdateTimer?.invalidate()
         infoUpdateTimer = nil
+        NSEvent.isMouseCoalescingEnabled = true
 
-        if let monitor = eventMonitor {
+        for monitor in eventMonitors {
             NSEvent.removeMonitor(monitor)
-            eventMonitor = nil
         }
+        eventMonitors.removeAll()
 
         for window in trailWindows {
             window.close()
@@ -1833,4 +2371,3 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.removeObserver(self)
     }
 }
-

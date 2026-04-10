@@ -2,6 +2,18 @@ import Foundation
 import AppKit
 import SwiftUI
 
+enum TrailAlgorithm: String, CaseIterable, Codable {
+    case spring
+    case smooth
+
+    var displayName: String {
+        switch self {
+        case .spring: "Spring"
+        case .smooth: "Smooth"
+        }
+    }
+}
+
 @Observable
 class TrailSettings {
     /// Callback when trail appearance settings change
@@ -19,6 +31,10 @@ class TrailSettings {
 
     var maxWidth = 8.0 { didSet { save(); onChanged?() } }
     var blueWidthMultiplier = 3.5 { didSet { save(); onChanged?() } }
+
+    // MARK: - Trail Motion
+
+    var trailAlgorithm: TrailAlgorithm = .smooth { didSet { save(); onChanged?() } }
 
     // MARK: - Movement
 
@@ -82,6 +98,7 @@ class TrailSettings {
     private enum Keys {
         static let maxWidth = "trail.maxWidth"
         static let blueWidthMultiplier = "trail.blueWidthMultiplier"
+        static let trailAlgorithm = "trail.algorithm"
         static let movementThreshold = "trail.movementThreshold"
         static let minimumVelocity = "trail.minimumVelocity"
         static let redFadeTime = "trail.redFadeTime"
@@ -105,6 +122,7 @@ class TrailSettings {
         let d = UserDefaults.standard
         d.set(maxWidth, forKey: Keys.maxWidth)
         d.set(blueWidthMultiplier, forKey: Keys.blueWidthMultiplier)
+        d.set(trailAlgorithm.rawValue, forKey: Keys.trailAlgorithm)
         d.set(movementThreshold, forKey: Keys.movementThreshold)
         d.set(minimumVelocity, forKey: Keys.minimumVelocity)
         d.set(redFadeTime, forKey: Keys.redFadeTime)
@@ -132,6 +150,10 @@ class TrailSettings {
 
         if d.object(forKey: Keys.maxWidth) != nil { maxWidth = d.double(forKey: Keys.maxWidth) }
         if d.object(forKey: Keys.blueWidthMultiplier) != nil { blueWidthMultiplier = d.double(forKey: Keys.blueWidthMultiplier) }
+        if let rawValue = d.string(forKey: Keys.trailAlgorithm),
+           let trailAlgorithm = TrailAlgorithm(rawValue: rawValue) {
+            self.trailAlgorithm = trailAlgorithm
+        }
         if d.object(forKey: Keys.movementThreshold) != nil { movementThreshold = d.double(forKey: Keys.movementThreshold) }
         if d.object(forKey: Keys.minimumVelocity) != nil { minimumVelocity = d.double(forKey: Keys.minimumVelocity) }
         if d.object(forKey: Keys.redFadeTime) != nil { redFadeTime = d.double(forKey: Keys.redFadeTime) }
@@ -154,6 +176,7 @@ class TrailSettings {
         isRippleEnabled = preset.isRippleEnabled
         maxWidth = preset.maxWidth
         blueWidthMultiplier = preset.blueWidthMultiplier
+        trailAlgorithm = preset.trailAlgorithm
         movementThreshold = preset.movementThreshold
         minimumVelocity = preset.minimumVelocity
         redFadeTime = preset.redFadeTime
@@ -176,6 +199,7 @@ class TrailSettings {
         isSuppressingCallbacks = true
         maxWidth = 8.0
         blueWidthMultiplier = 3.5
+        trailAlgorithm = .smooth
         movementThreshold = 30.0
         minimumVelocity = 0.0
         redFadeTime = 0.6

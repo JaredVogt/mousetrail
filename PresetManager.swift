@@ -38,6 +38,7 @@ class PresetManager {
             isRippleEnabled: settings.isRippleEnabled,
             maxWidth: settings.maxWidth,
             blueWidthMultiplier: settings.blueWidthMultiplier,
+            trailAlgorithm: settings.trailAlgorithm,
             movementThreshold: settings.movementThreshold,
             minimumVelocity: settings.minimumVelocity,
             redFadeTime: settings.redFadeTime,
