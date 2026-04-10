@@ -6,7 +6,20 @@ struct MouseTrailApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarSettingsView(settings: appDelegate.settings)
+            MenuBarSettingsView(
+                settings: appDelegate.settings,
+                liveInfo: appDelegate.liveInfo,
+                presetManager: appDelegate.presetManager,
+                onRequestPermission: { [weak appDelegate] in
+                    appDelegate?.requestScreenRecordingPermission()
+                },
+                onStartInfoUpdates: { [weak appDelegate] in
+                    appDelegate?.startInfoUpdates()
+                },
+                onStopInfoUpdates: { [weak appDelegate] in
+                    appDelegate?.stopInfoUpdates()
+                }
+            )
         } label: {
             Image(systemName: "cursorarrow.rays")
         }

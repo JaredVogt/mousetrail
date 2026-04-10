@@ -148,6 +148,30 @@ class TrailSettings {
         if d.object(forKey: Keys.isRippleEnabled) != nil { isRippleEnabled = d.bool(forKey: Keys.isRippleEnabled) }
     }
 
+    func apply(preset: TrailPreset) {
+        isSuppressingCallbacks = true
+        isTrailVisible = preset.isTrailVisible
+        isRippleEnabled = preset.isRippleEnabled
+        maxWidth = preset.maxWidth
+        blueWidthMultiplier = preset.blueWidthMultiplier
+        movementThreshold = preset.movementThreshold
+        minimumVelocity = preset.minimumVelocity
+        redFadeTime = preset.redFadeTime
+        blueFadeTime = preset.blueFadeTime
+        redTrailR = preset.redTrailR
+        redTrailG = preset.redTrailG
+        redTrailB = preset.redTrailB
+        blueTrailR = preset.blueTrailR
+        blueTrailG = preset.blueTrailG
+        blueTrailB = preset.blueTrailB
+        blueOuterOpacity = preset.blueOuterOpacity
+        blueMiddleOpacity = preset.blueMiddleOpacity
+        isSuppressingCallbacks = false
+        save()
+        onChanged?()
+        onVisibilityChanged?()
+    }
+
     func resetToDefaults() {
         isSuppressingCallbacks = true
         maxWidth = 8.0

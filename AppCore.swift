@@ -21,7 +21,7 @@ import CoreMedia
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-09 23:38:30"
+let BUILD_TIMESTAMP = "2026-04-10 00:37:47"
 
 /**
  * TrailPoint - Represents a single point in the mouse trail
@@ -852,54 +852,44 @@ class RippleEffect {
 /**
  * DebugLogger - Captures debug messages for display in the app
  */
+@Observable
 class DebugLogger {
     static let shared = DebugLogger()
-    
+
     private var messages: [String] = []
     private let maxMessages = 500
     private let dateFormatter: DateFormatter
-    
-    weak var textView: NSTextView?
-    
+
+    var displayText: String = ""
+
     private init() {
         dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "HH:mm:ss"
     }
-    
+
     func log(_ message: String) {
         let timestamp = dateFormatter.string(from: Date())
         let logMessage = "[\(timestamp)] \(message)"
-        
+
         DispatchQueue.main.async { [weak self] in
-            self?.messages.append(logMessage)
-            
-            // Keep only recent messages
-            if self?.messages.count ?? 0 > self?.maxMessages ?? 500 {
-                self?.messages.removeFirst()
+            guard let self else { return }
+            self.messages.append(logMessage)
+
+            if self.messages.count > self.maxMessages {
+                self.messages.removeFirst()
             }
-            
-            // Update text view if connected
-            self?.updateTextView()
+
+            self.displayText = self.messages.joined(separator: "\n")
         }
     }
-    
+
     func clear() {
         messages.removeAll()
-        updateTextView()
+        displayText = ""
     }
-    
+
     func getAllMessages() -> String {
         return messages.joined(separator: "\n")
-    }
-    
-    private func updateTextView() {
-        guard let textView = textView else { return }
-        textView.string = messages.joined(separator: "\n")
-        
-        // Scroll to bottom
-        if let textStorage = textView.textStorage {
-            textView.scrollRangeToVisible(NSRange(location: textStorage.length, length: 0))
-        }
     }
 }
 
@@ -1312,123 +1302,9 @@ class RippleManager: NSObject {
 }
 
 /**
- * SelectiveClickPanel - A custom NSPanel that implements intelligent mouse interaction
- *
- * This panel ignores all mouse events by default, making it click-through for most
- * of its surface. However, it dynamically enables mouse interaction when the cursor
- * hovers over specific areas (like the close button).
- *
- * This pattern is useful for overlay windows that need to be mostly non-intrusive
- * but still provide some interactive elements.
- */
-class SelectiveClickPanel: NSPanel {
-    /// Reference to the close button for tracking area management
-    var closeButton: NSButton?
-    
-    /// The tracking area that monitors mouse hover over the close button
-    var closeButtonTrackingArea: NSTrackingArea?
-    
-    /// Flag indicating whether the window is in draggable mode (Command key held)
-    var isDraggable = false
-    
-    /**
-     * Initializes the panel with custom window behavior
-     *
-     * We override the style mask to create a borderless, non-activating panel
-     * that acts as an overlay. The panel starts with mouse events disabled,
-     * making it click-through by default.
-     */
-    override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
-        // Force borderless and non-activating style regardless of input parameters
-        super.init(contentRect: contentRect, styleMask: [.borderless, .nonactivatingPanel], backing: backingStoreType, defer: flag)
-        
-        // Configure panel properties for overlay behavior
-        self.isFloatingPanel = true              // Float above other windows
-        self.becomesKeyOnlyIfNeeded = true      // Don't steal keyboard focus
-        self.hidesOnDeactivate = false          // Stay visible when app loses focus
-        self.ignoresMouseEvents = true          // Start click-through
-    }
-    
-    /**
-     * Prevents the window from becoming the key window
-     * This ensures the window doesn't steal keyboard focus from other apps
-     */
-    override var canBecomeKey: Bool {
-        return false
-    }
-    
-    /**
-     * Prevents the window from becoming the main window
-     * This maintains the overlay behavior without interfering with app focus
-     */
-    override var canBecomeMain: Bool {
-        return false
-    }
-    
-    /**
-     * Sets up mouse tracking for the close button
-     *
-     * This creates a tracking area that monitors when the mouse enters/exits
-     * the close button area, allowing us to selectively enable mouse interaction
-     *
-     * - Parameter button: The close button to track
-     */
-    func setupTrackingArea(for button: NSButton) {
-        self.closeButton = button
-        updateTrackingArea()
-    }
-    
-    /**
-     * Updates the tracking area when the button frame changes
-     *
-     * This ensures the tracking area always matches the button's current position
-     * and size, even if the window is resized or the button is moved
-     */
-    func updateTrackingArea() {
-        // Clean up any existing tracking area
-        if let oldArea = closeButtonTrackingArea {
-            self.contentView?.removeTrackingArea(oldArea)
-        }
-        
-        // Create new tracking area for the current button position
-        if let button = closeButton {
-            let trackingArea = NSTrackingArea(
-                rect: button.frame,
-                options: [.mouseEnteredAndExited, .activeAlways],
-                owner: self,
-                userInfo: nil
-            )
-            self.contentView?.addTrackingArea(trackingArea)
-            closeButtonTrackingArea = trackingArea
-        }
-    }
-    
-    /**
-     * Called when mouse enters the tracking area (close button)
-     *
-     * This enables mouse events for the window, allowing the button to be clicked
-     */
-    override func mouseEntered(with event: NSEvent) {
-        self.ignoresMouseEvents = false
-    }
-    
-    /**
-     * Called when mouse exits the tracking area (close button)
-     *
-     * This disables mouse events again, unless the window is in draggable mode
-     * (Command key held), making the window click-through for most of its surface
-     */
-    override func mouseExited(with event: NSEvent) {
-        if !isDraggable {
-            self.ignoresMouseEvents = true
-        }
-    }
-}
-
-/**
  * AppDelegate - Main application controller
  *
- * Manages the application lifecycle, creates and maintains both overlay windows,
+ * Manages the application lifecycle, creates trail overlay windows,
  * handles global event monitoring, and coordinates all UI updates.
  */
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -1436,88 +1312,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      * Application constants organized in a nested enum for clarity
      * These values control the appearance and behavior of the app
      */
-    private enum Constants {
-        /// Width of the info panel window in points
-        static let windowWidth: CGFloat = 400
-        
-        /// Height of the info panel window in points
-        static let windowHeight: CGFloat = 450
-        
-        /// Font size for the info display text
-        static let fontSize: CGFloat = 11
-        
-        /// Opacity of the info panel background (0.0 = transparent, 1.0 = opaque)
-        static let backgroundOpacity: CGFloat = 0.8
-        
-        /// Update frequency for smooth animation (60 FPS)
-        static let updateInterval: TimeInterval = 1.0 / 60.0
-    }
-    
-    // MARK: - Info Panel Properties
-    
-    /// The main info panel window that displays system information
-    var window: SelectiveClickPanel!
-    
-    /// Text field displaying mouse coordinates and system info
-    var label: NSTextField!
-    
-    /// Container view with the colored border
-    var borderView: NSView!
-    
-    /// Slider controls and their value labels
-    var movementThresholdSlider: NSSlider!
-    var movementThresholdLabel: NSTextField!
-    var minimumVelocitySlider: NSSlider!
-    var minimumVelocityLabel: NSTextField!
-    var blueWidthSlider: NSSlider!
-    var blueWidthLabel: NSTextField!
-    var blueOuterOpacitySlider: NSSlider!
-    var blueOuterOpacityLabel: NSTextField!
-    var blueMiddleOpacitySlider: NSSlider!
-    var blueMiddleOpacityLabel: NSTextField!
-    var fadeDurationSlider: NSSlider!
-    var fadeDurationLabel: NSTextField!
-    var blueFadeDurationSlider: NSSlider!
-    var blueFadeDurationLabel: NSTextField!
-    
-    /// Color sliders
-    var redColorSlider: NSSlider!
-    var redColorLabel: NSTextField!
-    var greenColorSlider: NSSlider!
-    var greenColorLabel: NSTextField!
-    var blueColorSlider: NSSlider!
-    var blueColorLabel: NSTextField!
-    var blueRedSlider: NSSlider!
-    var blueRedLabel: NSTextField!
-    var blueGreenSlider: NSSlider!
-    var blueGreenLabel: NSTextField!
-    var blueBlueSlider: NSSlider!
-    var blueBlueLabel: NSTextField!
-    
-    /// Close button for terminating the application
-    var closeButton: NSButton!
-    
     // MARK: - Event Monitoring Properties
-    
+
     /// Global event monitor for mouse movement
     var eventMonitor: Any?
-    
-    /// Global event monitor for keyboard modifier flags
-    var flagsMonitor: Any?
-    
+
     /// Timer for smooth UI updates at 60 FPS
     var updateTimer: Timer?
-    
-    /// Display link for vsync-synchronized updates
-    var displayLink: CVDisplayLink?
     
     // MARK: - Menu Bar Properties
 
     /// Trail settings (shared with SwiftUI MenuBarExtra)
     let settings = TrailSettings()
 
+    /// Live info model (shared with SwiftUI MenuBarExtra)
+    let liveInfo = LiveInfoModel()
+
+    /// Preset manager (shared with SwiftUI MenuBarExtra)
+    let presetManager = PresetManager()
+
+    /// Timer for pushing live data to SwiftUI at 4Hz
+    var infoUpdateTimer: Timer?
+
     /// Toggle states for windows
-    var isInfoPanelVisible = false
     var isTrailVisible = true
     var isRippleEnabled = false
     
@@ -1554,8 +1371,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Cached frontmost application
     var cachedFrontmostApp: String = "Unknown"
     
-    /// Cached screen configuration
-    var cachedScreenInfo: String = ""
 
     /// Latest mouse location received from the global monitor
     var latestMouseLocation: NSPoint = .zero
@@ -1574,25 +1389,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyCurrentTrailConfiguration(to trailView: TrailView) {
-        trailView.movementThreshold = CGFloat(movementThresholdSlider?.doubleValue ?? 30)
-        trailView.minimumVelocity = CGFloat(minimumVelocitySlider?.doubleValue ?? 0)
-        trailView.blueWidthMultiplier = CGFloat(blueWidthSlider?.doubleValue ?? 3.5)
-        trailView.blueOuterOpacity = CGFloat(blueOuterOpacitySlider?.doubleValue ?? 0.02)
-        trailView.blueMiddleOpacity = CGFloat(blueMiddleOpacitySlider?.doubleValue ?? 0.08)
-        trailView.fadeTime = fadeDurationSlider?.doubleValue ?? 0.6
-        trailView.blueFadeTime = blueFadeDurationSlider?.doubleValue ?? 0.35
-        trailView.trailColor = NSColor(
-            red: CGFloat(redColorSlider?.doubleValue ?? 1.0),
-            green: CGFloat(greenColorSlider?.doubleValue ?? 0.15),
-            blue: CGFloat(blueColorSlider?.doubleValue ?? 0.1),
-            alpha: 1.0
-        )
-        trailView.blueTrailColor = NSColor(
-            red: CGFloat(blueRedSlider?.doubleValue ?? 0.1),
-            green: CGFloat(blueGreenSlider?.doubleValue ?? 0.5),
-            blue: CGFloat(blueBlueSlider?.doubleValue ?? 1.0),
-            alpha: 1.0
-        )
+        trailView.maxWidth = CGFloat(settings.maxWidth)
+        trailView.movementThreshold = CGFloat(settings.movementThreshold)
+        trailView.minimumVelocity = CGFloat(settings.minimumVelocity)
+        trailView.blueWidthMultiplier = CGFloat(settings.blueWidthMultiplier)
+        trailView.blueOuterOpacity = CGFloat(settings.blueOuterOpacity)
+        trailView.blueMiddleOpacity = CGFloat(settings.blueMiddleOpacity)
+        trailView.fadeTime = settings.redFadeTime
+        trailView.blueFadeTime = settings.blueFadeTime
+        trailView.trailColor = settings.redTrailNSColor
+        trailView.blueTrailColor = settings.blueTrailNSColor
         trailView.updateLayerProperties()
     }
 
@@ -1601,7 +1407,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         hasPendingMouseSample = false
         updateTrailPosition(at: latestMouseLocation, timestamp: now)
-        updateMouseCoordinates(mouseLocation: latestMouseLocation)
     }
 
     private func updateTrailAnimation(at now: TimeInterval) {
@@ -1610,292 +1415,90 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /**
-     * Helper method to create a slider with label
-     */
-    private func createSlider(title: String, min: Double, max: Double, current: Double, y: CGFloat, action: Selector, unit: String = "") -> (slider: NSSlider, label: NSTextField, valueLabel: NSTextField) {
-        // Title label
-        let titleLabel = NSTextField(labelWithString: title)
-        titleLabel.frame = NSRect(x: 10, y: y, width: 120, height: 20)
-        titleLabel.font = .systemFont(ofSize: 10)
-        titleLabel.textColor = .white
-        
-        // Slider
-        let slider = NSSlider()
-        slider.frame = NSRect(x: 135, y: y, width: 200, height: 20)
-        slider.minValue = min
-        slider.maxValue = max
-        slider.doubleValue = current
-        slider.target = self
-        slider.action = action
-        slider.isContinuous = true
-        
-        // Value label
-        let valueText = unit.isEmpty ? String(format: "%.2f", current) : String(format: "%.2f%@", current, unit)
-        let valueLabel = NSTextField(labelWithString: valueText)
-        valueLabel.frame = NSRect(x: 340, y: y, width: 50, height: 20)
-        valueLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-        valueLabel.textColor = .white
-        valueLabel.alignment = .left
-        
-        borderView.addSubview(titleLabel)
-        borderView.addSubview(slider)
-        borderView.addSubview(valueLabel)
-        
-        return (slider, titleLabel, valueLabel)
+    // MARK: - Live Info Updates for Menu Bar
+
+    func startInfoUpdates() {
+        guard infoUpdateTimer == nil else { return }
+        pushLiveInfoToModel()
+        infoUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            self?.pushLiveInfoToModel()
+        }
     }
-    
-    /**
-     * Called when the application has finished launching
-     *
-     * This is the main entry point where we:
-     * 1. Create both overlay windows
-     * 2. Set up event monitoring
-     * 3. Start the update timer
-     * 4. Configure all UI elements
-     */
+
+    func stopInfoUpdates() {
+        infoUpdateTimer?.invalidate()
+        infoUpdateTimer = nil
+    }
+
+    private func pushLiveInfoToModel() {
+        liveInfo.mouseX = Int(latestMouseLocation.x)
+        liveInfo.mouseY = Int(latestMouseLocation.y)
+        liveInfo.frontmostApp = cachedFrontmostApp
+        liveInfo.screenRecordingGranted = rippleManager?.hasPermission ?? false
+        let screens = NSScreen.screens
+        liveInfo.screenCount = screens.count
+        liveInfo.screenDescriptions = screens.enumerated().map { (i, s) in
+            let isMain = s == NSScreen.main ? " (main)" : ""
+            return "[\(i+1)] \(Int(s.frame.width))×\(Int(s.frame.height))\(isMain)"
+        }
+    }
+
+    func requestScreenRecordingPermission() {
+        debugLog("Manual permission request triggered")
+
+        let currentStatus = CGPreflightScreenCaptureAccess()
+        debugLog("Current permission status: \(currentStatus)")
+
+        let rippleManager = ensureRippleManager()
+        rippleManager.checkAndSetupScreenCapture()
+
+        if !currentStatus {
+            CGRequestScreenCaptureAccess()
+            debugLog("Permission requested, opening System Settings")
+
+            let urls = [
+                "x-apple.systempreferences:com.apple.Privacy-ScreenRecording",
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+                "x-apple.systempreferences:com.apple.preference.security"
+            ]
+
+            var opened = false
+            for urlString in urls {
+                if let url = URL(string: urlString) {
+                    if NSWorkspace.shared.open(url) {
+                        debugLog("Opened System Settings with URL: \(urlString)")
+                        opened = true
+                        break
+                    }
+                }
+            }
+
+            if !opened {
+                debugLog("Failed to open System Settings to Screen Recording section")
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                debugLog("Re-checking permission after manual request")
+                self?.rippleManager?.checkAndSetupScreenCapture()
+            }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Initialize debug logging (this won't show yet as UI isn't created)
         print("[debug] MouseTrail starting...")
-        
-        // Ensure at least one screen is available
+
         guard NSScreen.screens.first != nil else {
             debugLog("No screens available")
             NSApplication.shared.terminate(self)
             return
         }
-        
-        // Calculate initial window position centered on current mouse location
-        let mouseLocation = NSEvent.mouseLocation
-        latestMouseLocation = mouseLocation
-        let xPosition = mouseLocation.x - (Constants.windowWidth / 2)
-        let yPosition = mouseLocation.y - (Constants.windowHeight / 2)
 
-        // Create the main info panel window
-        window = SelectiveClickPanel(
-            contentRect: NSRect(x: xPosition,
-                                y: yPosition,
-                                width: Constants.windowWidth,
-                                height: Constants.windowHeight),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-
-        // Configure window transparency and appearance
-        window.isOpaque = false                       // Allow transparent regions
-        window.backgroundColor = .clear               // Fully transparent background
-        window.hasShadow = false                     // No system shadow (we draw our own)
-        window.level = .floating                     // Float above normal windows
-        
-        // Configure window behavior across spaces and Mission Control
-        window.collectionBehavior = [
-            .canJoinAllSpaces,      // Visible on all desktop spaces
-            .ignoresCycle,          // Not included in Command-Tab cycling
-            .stationary,            // Not affected by Mission Control
-            .fullScreenAuxiliary    // Can appear over full-screen apps
-        ]
-        window.isMovableByWindowBackground = false    // Require Command key for dragging
-
-        // Set initial window size first so we can calculate positions
-        let initialWindowHeight: CGFloat = 900
-        window.setContentSize(NSSize(width: 400, height: initialWindowHeight))
-        
-        // Create container view with visible border
-        borderView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: initialWindowHeight))
-        borderView.wantsLayer = true
-        borderView.layer?.borderColor = NSColor.green.cgColor  // Green in normal state
-        borderView.layer?.borderWidth = 3
-        borderView.layer?.cornerRadius = 8
-        borderView.layer?.backgroundColor = NSColor.black.withAlphaComponent(Constants.backgroundOpacity).cgColor
-        borderView.autoresizingMask = [.width, .height]       // Resize with window
-        
-        label = NSTextField(labelWithString: "")
-        // Position label at the top of the window with more height for multiple screens
-        label.frame = NSRect(x: 3, y: initialWindowHeight - 120, width: 394, height: 115)
-        label.font = .monospacedSystemFont(ofSize: Constants.fontSize, weight: .medium)
-        label.textColor = .white
-        label.isBordered = false
-        label.isEditable = false
-        label.alignment = .center
-        label.autoresizingMask = [.width, .maxYMargin]
-        label.wantsLayer = true
-        label.layer?.backgroundColor = NSColor.black.withAlphaComponent(Constants.backgroundOpacity).cgColor
-        label.layer?.cornerRadius = 5
-        label.drawsBackground = false // Don't let NSTextField draw its own background
-
-        // Create close button
-        closeButton = NSButton(frame: NSRect(x: 375, y: initialWindowHeight - 25, width: 20, height: 20))
-        closeButton.title = "✕"
-        closeButton.bezelStyle = .circular
-        closeButton.isBordered = false
-        closeButton.wantsLayer = true
-        closeButton.layer?.backgroundColor = NSColor.red.withAlphaComponent(0.8).cgColor
-        closeButton.layer?.cornerRadius = 10
-        closeButton.attributedTitle = NSAttributedString(string: "✕", attributes: [
-            .foregroundColor: NSColor.white,
-            .font: NSFont.systemFont(ofSize: 12, weight: .bold)
-        ])
-        closeButton.target = self
-        closeButton.action = #selector(closeButtonClicked)
-        closeButton.autoresizingMask = [.minXMargin, .minYMargin]
-        
-        borderView.addSubview(label)
-        borderView.addSubview(closeButton) // Add close button after label so it's on top
-        
-        // Create sliders - starting Y position below the info display
-        var currentY: CGFloat = initialWindowHeight - 140
-        
-        // Movement controls
-        let movementSection = createSlider(title: "Movement Threshold:", min: 10, max: 100, current: 30, y: currentY, action: #selector(movementThresholdChanged), unit: "px")
-        movementThresholdSlider = movementSection.slider
-        movementThresholdLabel = movementSection.valueLabel
-        
-        currentY -= 25
-        let velocitySection = createSlider(title: "Min Velocity:", min: 0, max: 200, current: 0, y: currentY, action: #selector(minimumVelocityChanged), unit: "px/s")
-        minimumVelocitySlider = velocitySection.slider
-        minimumVelocityLabel = velocitySection.valueLabel
-        
-        // Blue trail appearance
-        currentY -= 30
-        let blueWidthSection = createSlider(title: "Blue Width:", min: 0.5, max: 5.0, current: 3.5, y: currentY, action: #selector(blueWidthChanged))
-        blueWidthSlider = blueWidthSection.slider
-        blueWidthLabel = blueWidthSection.valueLabel
-        
-        currentY -= 25
-        let blueOuterSection = createSlider(title: "Blue Outer Opacity:", min: 0.01, max: 0.1, current: 0.02, y: currentY, action: #selector(blueOuterOpacityChanged))
-        blueOuterOpacitySlider = blueOuterSection.slider
-        blueOuterOpacityLabel = blueOuterSection.valueLabel
-        
-        currentY -= 25
-        let blueMiddleSection = createSlider(title: "Blue Mid Opacity:", min: 0.05, max: 0.3, current: 0.08, y: currentY, action: #selector(blueMiddleOpacityChanged))
-        blueMiddleOpacitySlider = blueMiddleSection.slider
-        blueMiddleOpacityLabel = blueMiddleSection.valueLabel
-        
-        // Fade durations
-        currentY -= 30
-        let fadeSection = createSlider(title: "Red Fade Time:", min: 0.1, max: 2.0, current: 0.6, y: currentY, action: #selector(fadeDurationChanged), unit: "s")
-        fadeDurationSlider = fadeSection.slider
-        fadeDurationLabel = fadeSection.valueLabel
-        
-        currentY -= 25
-        let blueFadeSection = createSlider(title: "Blue Fade Time:", min: 0.1, max: 1.0, current: 0.35, y: currentY, action: #selector(blueFadeDurationChanged), unit: "s")
-        blueFadeDurationSlider = blueFadeSection.slider
-        blueFadeDurationLabel = blueFadeSection.valueLabel
-        
-        // Red trail color
-        currentY -= 30
-        let redSection = createSlider(title: "Red Trail - R:", min: 0, max: 1, current: 1.0, y: currentY, action: #selector(redColorChanged))
-        redColorSlider = redSection.slider
-        redColorLabel = redSection.valueLabel
-        
-        currentY -= 25
-        let greenSection = createSlider(title: "Red Trail - G:", min: 0, max: 1, current: 0.15, y: currentY, action: #selector(redColorChanged))
-        greenColorSlider = greenSection.slider
-        greenColorLabel = greenSection.valueLabel
-        
-        currentY -= 25
-        let blueSection = createSlider(title: "Red Trail - B:", min: 0, max: 1, current: 0.1, y: currentY, action: #selector(redColorChanged))
-        blueColorSlider = blueSection.slider
-        blueColorLabel = blueSection.valueLabel
-        
-        // Blue trail color
-        currentY -= 30
-        let blueRedSection = createSlider(title: "Blue Trail - R:", min: 0, max: 1, current: 0.1, y: currentY, action: #selector(blueColorChanged))
-        blueRedSlider = blueRedSection.slider
-        blueRedLabel = blueRedSection.valueLabel
-        
-        currentY -= 25
-        let blueGreenSection = createSlider(title: "Blue Trail - G:", min: 0, max: 1, current: 0.5, y: currentY, action: #selector(blueColorChanged))
-        blueGreenSlider = blueGreenSection.slider
-        blueGreenLabel = blueGreenSection.valueLabel
-        
-        currentY -= 25
-        let blueBlueSection = createSlider(title: "Blue Trail - B:", min: 0, max: 1, current: 1.0, y: currentY, action: #selector(blueColorChanged))
-        blueBlueSlider = blueBlueSection.slider
-        blueBlueLabel = blueBlueSection.valueLabel
-        
-        // Add permission request button
-        currentY -= 35
-        let permissionButton = NSButton(frame: NSRect(x: 10, y: currentY, width: 380, height: 30))
-        permissionButton.title = "Request Screen Recording Permission"
-        permissionButton.bezelStyle = .rounded
-        permissionButton.target = self
-        permissionButton.action = #selector(requestPermissionClicked)
-        borderView.addSubview(permissionButton)
-        
-        // Add debug log section with border
-        currentY -= 35
-        
-        // Create a bordered box for the debug log
-        let debugBoxHeight: CGFloat = 200  // Reduced height
-        let debugBoxY = currentY - debugBoxHeight
-        let debugBox = NSBox(frame: NSRect(x: 10, y: debugBoxY, width: 380, height: debugBoxHeight))
-        debugBox.title = "Debug Log"
-        debugBox.titlePosition = .atTop
-        debugBox.boxType = .primary
-        debugBox.borderColor = .gray
-        debugBox.fillColor = .clear
-        borderView.addSubview(debugBox)
-        
-        // Add scrollable text view for debug messages inside the box
-        let scrollView = NSScrollView(frame: NSRect(x: 5, y: 30, width: 370, height: 140))
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = false
-        scrollView.borderType = .noBorder
-        
-        let textView = NSTextView(frame: scrollView.bounds)
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        textView.backgroundColor = NSColor.black
-        textView.textColor = .green
-        textView.autoresizingMask = [.width, .height]
-        
-        scrollView.documentView = textView
-        debugBox.addSubview(scrollView)
-        
-        // Connect debug logger to text view
-        DebugLogger.shared.textView = textView
-        
-        // Add initial message to show it's working
-        debugLog("Debug log initialized")
-        
-        // Add clear log button inside the box
-        let clearLogButton = NSButton(frame: NSRect(x: 5, y: 5, width: 100, height: 25))
-        clearLogButton.title = "Clear Log"
-        clearLogButton.bezelStyle = .rounded
-        clearLogButton.target = self
-        clearLogButton.action = #selector(clearDebugLog)
-        debugBox.addSubview(clearLogButton)
-        
-        // Add copy log button
-        let copyLogButton = NSButton(frame: NSRect(x: 110, y: 5, width: 100, height: 25))
-        copyLogButton.title = "Copy Log"
-        copyLogButton.bezelStyle = .rounded
-        copyLogButton.target = self
-        copyLogButton.action = #selector(copyDebugLog)
-        debugBox.addSubview(copyLogButton)
-        
-        currentY -= debugBoxHeight + 10
-        
-        // Don't resize window here - we already set it at the beginning
-        
-        window.contentView?.addSubview(borderView)
-        
-        // Setup tracking area for close button
-        window.setupTrackingArea(for: closeButton)
-        
-        // Only show window if it should be visible
-        if isInfoPanelVisible {
-            window.makeKeyAndOrderFront(nil)
-        }
+        latestMouseLocation = NSEvent.mouseLocation
 
         // Wire settings callbacks
         settings.restore()
+        presetManager.takeCleanSnapshot(from: settings)
         isTrailVisible = settings.isTrailVisible
-        isInfoPanelVisible = settings.isInfoPanelVisible
         isRippleEnabled = settings.isRippleEnabled
         settings.onChanged = { [weak self] in
             self?.applySettingsToTrailViews()
@@ -1903,69 +1506,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.onVisibilityChanged = { [weak self] in
             self?.applyVisibilitySettings()
         }
-        
+
         // Create trail windows for each screen
         createTrailWindows()
-        
-        // Log that app is ready
+
         debugLog("MouseTrail initialized successfully")
         debugLog("Trail windows created: \(trailWindows.count)")
         debugLog("Monitoring mouse events...")
 
         // Cache initial system state
         updateCachedSystemInfo()
-        
-        // Initial display update
-        updateDisplay()
-        
-        // MARK: Event Monitoring Setup
-        
+
         // Monitor global mouse movement
-        // Note: Uses weak self to prevent retain cycles
-        // Global monitors receive events from all applications, not just ours
-        // No special permissions required for mouse movement monitoring
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
             self?.handleMouseMovement()
         }
-        
-        // Monitor global keyboard modifier changes (Command, Option, etc.)
-        flagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
-        }
-        
+
         // Monitor global mouse clicks for ripple effect
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             self?.handleMouseClick(event)
         }
-        
-        // Also add local monitor for when our app has focus
-        // Global monitors don't receive events when the app is active
-        // Local monitors only receive events when our app is active
-        // Must return the event to allow normal processing
-        NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
-            return event  // Must return event for it to be processed normally
-        }
-        
-        // Don't start the timer - wait for mouse movement
-        // This ensures zero CPU usage when idle
-        
-        // Monitor app switching for immediate UI updates
-        // NSWorkspace notifications tell us about app-level changes
-        // This specific notification fires when user switches between applications
+
+        // Monitor app switching
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(activeApplicationChanged),
             name: NSWorkspace.didActivateApplicationNotification,
             object: nil
         )
-        
-        // Monitor screen configuration changes (monitors added/removed)
-        // This notification fires when:
-        // - A display is connected or disconnected
-        // - Display resolution changes
-        // - Display arrangement changes in System Preferences
-        // - Display mirroring is enabled/disabled
+
+        // Monitor screen configuration changes
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenConfigurationChanged),
@@ -2089,255 +1659,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    /**
-     * Updates only the mouse coordinates in the display
-     */
-    func updateMouseCoordinates(mouseLocation: NSPoint? = nil, force: Bool = false) {
-        guard force || isInfoPanelVisible else { return }
-        let mouseLocation = mouseLocation ?? latestMouseLocation
-        
-        // Build display text with cached values - keep rounding for display only
-        var displayText = "Build: \(BUILD_TIMESTAMP)\n"
-        displayText += "Mouse: x:\(Int(mouseLocation.x)) y:\(Int(mouseLocation.y))\n"
-        displayText += "Active: \(cachedFrontmostApp)\n"
-        
-        // Add screen recording permission status
-        let permissionStatus = rippleManager?.hasPermission ?? false
-        displayText += "Screen Recording: \(permissionStatus ? "✓ Granted" : "✗ Denied")\n"
-        
-        displayText += cachedScreenInfo
-        
-        label.stringValue = displayText.trimmingCharacters(in: .newlines)
-    }
-    
-    /**
-     * Updates cached system information
-     */
     func updateCachedSystemInfo() {
-        // Cache frontmost app
         if let frontApp = NSWorkspace.shared.frontmostApplication {
             cachedFrontmostApp = frontApp.localizedName ?? "Unknown"
         }
-        
-        // Cache screen information
-        let screens = NSScreen.screens
-        var screenText = "Screens: \(screens.count)\n"
-        for (index, screen) in screens.enumerated() {
-            let resolution = screen.frame.size
-            let isMain = screen == NSScreen.main ? " (main)" : ""
-            screenText += "[\(index+1)] \(Int(resolution.width))×\(Int(resolution.height))\(isMain)"
-            if index < screens.count - 1 {
-                screenText += "\n"
-            }
-        }
-        cachedScreenInfo = screenText
-    }
-    
-    /**
-     * Updates the information display with current system state
-     *
-     * This method is called:
-     * - By the timer (60 times per second)
-     * - When mouse moves
-     * - When active application changes
-     *
-     * It gathers and formats:
-     * - Current mouse coordinates
-     * - Active application name
-     * - Connected display information
-     */
-    func updateDisplay() {
-        updateMouseCoordinates(force: true)
-    }
-    
-    /**
-     * Handles keyboard modifier flag changes (Command, Option, Shift, etc.)
-     *
-     * This method enables/disables window dragging based on the Command key state.
-     * When Command is held, the window becomes draggable and the border turns yellow
-     * as visual feedback.
-     *
-     * - Parameter event: The flags changed event containing modifier key states
-     */
-    func handleFlagsChanged(_ event: NSEvent) {
-        let commandKeyPressed = event.modifierFlags.contains(.command)
-        
-        // Only update if state actually changed to avoid unnecessary work
-        if commandKeyPressed != window.isDraggable {
-            window.isDraggable = commandKeyPressed
-            window.isMovableByWindowBackground = commandKeyPressed
-            
-            // Toggle mouse event handling based on drag mode
-            window.ignoresMouseEvents = !commandKeyPressed
-            
-            // Provide visual feedback for drag mode
-            if commandKeyPressed {
-                // Yellow border indicates draggable state
-                borderView.layer?.borderColor = NSColor.systemYellow.cgColor
-                borderView.layer?.borderWidth = 4
-            } else {
-                // Green border for normal state
-                borderView.layer?.borderColor = NSColor.green.cgColor
-                borderView.layer?.borderWidth = 3
-            }
-        }
-    }
-    
-    /**
-     * Handler for close button clicks
-     * Terminates the application when the user clicks the × button
-     */
-    @objc func closeButtonClicked() {
-        // Hide the panel instead of terminating
-        window.orderOut(nil)
-        isInfoPanelVisible = false
-        settings.isInfoPanelVisible = false
-    }
-    
-    /**
-     * Handler for permission request button
-     */
-    @objc func requestPermissionClicked() {
-        debugLog("Manual permission request triggered")
-        
-        // First check current status
-        let currentStatus = CGPreflightScreenCaptureAccess()
-        debugLog("Current permission status: \(currentStatus)")
-        
-        // Always re-check with actual capture test
-        let rippleManager = ensureRippleManager()
-        rippleManager.checkAndSetupScreenCapture()
-        
-        if !currentStatus {
-            // Request permission
-            CGRequestScreenCaptureAccess()
-            debugLog("Permission requested, opening System Settings")
-            
-            // Open System Settings to Screen Recording
-            // Try multiple URL formats as they vary between macOS versions
-            let urls = [
-                "x-apple.systempreferences:com.apple.Privacy-ScreenRecording",
-                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-                "x-apple.systempreferences:com.apple.preference.security"
-            ]
-            
-            var opened = false
-            for urlString in urls {
-                if let url = URL(string: urlString) {
-                    if NSWorkspace.shared.open(url) {
-                        debugLog("Opened System Settings with URL: \(urlString)")
-                        opened = true
-                        break
-                    }
-                }
-            }
-            
-            if !opened {
-                debugLog("Failed to open System Settings to Screen Recording section")
-            }
-            
-            // Check again after delay using actual capture test
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                debugLog("Re-checking permission after manual request")
-                self?.rippleManager?.checkAndSetupScreenCapture()
-            }
-        }
-    }
-    
-    /**
-     * Clear the debug log
-     */
-    @objc func clearDebugLog() {
-        DebugLogger.shared.clear()
-        debugLog("Debug log cleared")
-    }
-    
-    /**
-     * Copy the debug log to clipboard
-     */
-    @objc func copyDebugLog() {
-        let logContent = DebugLogger.shared.getAllMessages()
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(logContent, forType: .string)
-        debugLog("Debug log copied to clipboard")
-    }
-    
-    // MARK: - Slider Actions
-    
-    @objc private func movementThresholdChanged(_ sender: NSSlider) {
-        settings.movementThreshold = sender.doubleValue
     }
 
-    @objc private func minimumVelocityChanged(_ sender: NSSlider) {
-        settings.minimumVelocity = sender.doubleValue
-    }
-
-    @objc private func blueWidthChanged(_ sender: NSSlider) {
-        settings.blueWidthMultiplier = sender.doubleValue
-    }
-
-    @objc private func blueOuterOpacityChanged(_ sender: NSSlider) {
-        settings.blueOuterOpacity = sender.doubleValue
-    }
-
-    @objc private func blueMiddleOpacityChanged(_ sender: NSSlider) {
-        settings.blueMiddleOpacity = sender.doubleValue
-    }
-
-    @objc private func fadeDurationChanged(_ sender: NSSlider) {
-        settings.redFadeTime = sender.doubleValue
-    }
-
-    @objc private func blueFadeDurationChanged(_ sender: NSSlider) {
-        settings.blueFadeTime = sender.doubleValue
-    }
-
-    @objc private func redColorChanged(_ sender: NSSlider) {
-        settings.redTrailR = redColorSlider.doubleValue
-        settings.redTrailG = greenColorSlider.doubleValue
-        settings.redTrailB = blueColorSlider.doubleValue
-    }
-
-    @objc private func blueColorChanged(_ sender: NSSlider) {
-        settings.blueTrailR = blueRedSlider.doubleValue
-        settings.blueTrailG = blueGreenSlider.doubleValue
-        settings.blueTrailB = blueBlueSlider.doubleValue
-    }
-    
-    /**
-     * Handler for application switching notifications
-     * Updates the display immediately when the user switches apps
-     * to show the new active application name
-     */
     @objc func activeApplicationChanged(_ notification: Notification) {
-        // Update cached app name
         if let frontApp = NSWorkspace.shared.frontmostApplication {
             cachedFrontmostApp = frontApp.localizedName ?? "Unknown"
         }
-        updateMouseCoordinates(force: isInfoPanelVisible)
     }
-    
-    /**
-     * Called when screen configuration changes (monitors added/removed)
-     * Recreates trail windows to match new screen configuration
-     *
-     * This handler is triggered by NSApplication.didChangeScreenParametersNotification
-     * and ensures the trail appears correctly on all connected displays without
-     * requiring an app restart.
-     *
-     * - Parameter notification: The notification containing screen change information
-     */
+
     @objc func screenConfigurationChanged(_ notification: Notification) {
-        // Recreate trail windows for new screen configuration
-        // This handles monitors being added or removed dynamically
         createTrailWindows()
-        
-        // Update cached screen info
         updateCachedSystemInfo()
-        updateMouseCoordinates(force: isInfoPanelVisible)
     }
-    
+
     /// Apply current settings to all TrailView instances
     func applySettingsToTrailViews() {
         for trailView in trailViews {
@@ -2353,34 +1691,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             trailView.blueTrailColor = settings.blueTrailNSColor
             trailView.updateLayerProperties()
         }
-
-        // Sync info panel sliders if they exist
-        movementThresholdSlider?.doubleValue = settings.movementThreshold
-        movementThresholdLabel?.stringValue = String(format: "%.0fpx", settings.movementThreshold)
-        minimumVelocitySlider?.doubleValue = settings.minimumVelocity
-        minimumVelocityLabel?.stringValue = String(format: "%.0fpx/s", settings.minimumVelocity)
-        blueWidthSlider?.doubleValue = settings.blueWidthMultiplier
-        blueWidthLabel?.stringValue = String(format: "%.2f", settings.blueWidthMultiplier)
-        blueOuterOpacitySlider?.doubleValue = settings.blueOuterOpacity
-        blueOuterOpacityLabel?.stringValue = String(format: "%.3f", settings.blueOuterOpacity)
-        blueMiddleOpacitySlider?.doubleValue = settings.blueMiddleOpacity
-        blueMiddleOpacityLabel?.stringValue = String(format: "%.3f", settings.blueMiddleOpacity)
-        fadeDurationSlider?.doubleValue = settings.redFadeTime
-        fadeDurationLabel?.stringValue = String(format: "%.2fs", settings.redFadeTime)
-        blueFadeDurationSlider?.doubleValue = settings.blueFadeTime
-        blueFadeDurationLabel?.stringValue = String(format: "%.2fs", settings.blueFadeTime)
-        redColorSlider?.doubleValue = settings.redTrailR
-        redColorLabel?.stringValue = String(format: "%.2f", settings.redTrailR)
-        greenColorSlider?.doubleValue = settings.redTrailG
-        greenColorLabel?.stringValue = String(format: "%.2f", settings.redTrailG)
-        blueColorSlider?.doubleValue = settings.redTrailB
-        blueColorLabel?.stringValue = String(format: "%.2f", settings.redTrailB)
-        blueRedSlider?.doubleValue = settings.blueTrailR
-        blueRedLabel?.stringValue = String(format: "%.2f", settings.blueTrailR)
-        blueGreenSlider?.doubleValue = settings.blueTrailG
-        blueGreenLabel?.stringValue = String(format: "%.2f", settings.blueTrailG)
-        blueBlueSlider?.doubleValue = settings.blueTrailB
-        blueBlueLabel?.stringValue = String(format: "%.2f", settings.blueTrailB)
     }
 
     /// Apply visibility toggle changes
@@ -2394,17 +1704,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 } else {
                     trailWindow.orderOut(nil)
                 }
-            }
-        }
-
-        // Info panel visibility
-        if settings.isInfoPanelVisible != isInfoPanelVisible {
-            isInfoPanelVisible = settings.isInfoPanelVisible
-            if isInfoPanelVisible {
-                updateMouseCoordinates(force: true)
-                window.makeKeyAndOrderFront(nil)
-            } else {
-                window.orderOut(nil)
             }
         }
 
@@ -2512,31 +1811,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      * is good practice and prevents potential issues.
      */
     func applicationWillTerminate(_ notification: Notification) {
-        // Stop and clean up the update timer
         updateTimer?.invalidate()
         updateTimer = nil
-        
-        // Remove global event monitors
+        infoUpdateTimer?.invalidate()
+        infoUpdateTimer = nil
+
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
         }
-        if let monitor = flagsMonitor {
-            NSEvent.removeMonitor(monitor)
-            flagsMonitor = nil
-        }
-        
-        // Close and clean up all trail windows
+
         for window in trailWindows {
             window.close()
         }
         trailWindows.removeAll()
         trailViews.removeAll()
-        
-        // Clean up ripple effects
+
         rippleManager?.cleanup()
-        
-        // Remove notification observers
+
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         NotificationCenter.default.removeObserver(self)
     }
