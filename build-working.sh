@@ -8,13 +8,13 @@ echo "Building MouseTrail..."
 BUILD_TIME=$(date "+%Y-%m-%d %H:%M:%S")
 echo "Build time: $BUILD_TIME"
 
-# Update the BUILD_TIMESTAMP in main.swift
-sed -i '' "s/let BUILD_TIMESTAMP = \"[^\"]*\"/let BUILD_TIMESTAMP = \"$BUILD_TIME\"/" main.swift
+# Update the BUILD_TIMESTAMP in AppCore.swift
+sed -i '' "s/let BUILD_TIMESTAMP = \"[^\"]*\"/let BUILD_TIMESTAMP = \"$BUILD_TIME\"/" AppCore.swift
 
 SWIFT_FLAGS=(-O -whole-module-optimization)
 
 # Compile the Swift file
-if swiftc "${SWIFT_FLAGS[@]}" main.swift -o MouseTrail; then
+if swiftc "${SWIFT_FLAGS[@]}" *.swift -o MouseTrail; then
     echo "✓ Compilation successful"
 else
     echo "✗ Compilation failed"

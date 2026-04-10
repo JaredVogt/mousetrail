@@ -18,9 +18,10 @@ import QuartzCore
 import ScreenCaptureKit
 import CoreVideo
 import CoreMedia
+import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2025-08-06 14:02:24"
+let BUILD_TIMESTAMP = "2026-04-09 23:38:30"
 
 /**
  * TrailPoint - Represents a single point in the mouse trail
@@ -1511,13 +1512,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var displayLink: CVDisplayLink?
     
     // MARK: - Menu Bar Properties
-    
-    /// Status item for menu bar presence
-    var statusItem: NSStatusItem?
-    
-    /// Menu for the status item
-    var statusMenu: NSMenu?
-    
+
+    /// Trail settings (shared with SwiftUI MenuBarExtra)
+    let settings = TrailSettings()
+
     /// Toggle states for windows
     var isInfoPanelVisible = false
     var isTrailVisible = true
@@ -1894,8 +1892,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.makeKeyAndOrderFront(nil)
         }
 
-        // Setup menu bar
-        setupMenuBar()
+        // Wire settings callbacks
+        settings.restore()
+        isTrailVisible = settings.isTrailVisible
+        isInfoPanelVisible = settings.isInfoPanelVisible
+        isRippleEnabled = settings.isRippleEnabled
+        settings.onChanged = { [weak self] in
+            self?.applySettingsToTrailViews()
+        }
+        settings.onVisibilityChanged = { [weak self] in
+            self?.applyVisibilitySettings()
+        }
         
         // Create trail windows for each screen
         createTrailWindows()
@@ -2184,16 +2191,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Hide the panel instead of terminating
         window.orderOut(nil)
         isInfoPanelVisible = false
-        
-        // Update menu item state
-        if let menu = statusMenu {
-            for item in menu.items {
-                if item.title == "Show Info Panel" {
-                    item.state = .off
-                    break
-                }
-            }
-        }
+        settings.isInfoPanelVisible = false
     }
     
     /**
@@ -2268,93 +2266,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Slider Actions
     
     @objc private func movementThresholdChanged(_ sender: NSSlider) {
-        let value = CGFloat(sender.doubleValue)
-        movementThresholdLabel.stringValue = String(format: "%.0fpx", value)
-        for trailView in trailViews {
-            trailView.movementThreshold = value
-        }
+        settings.movementThreshold = sender.doubleValue
     }
-    
+
     @objc private func minimumVelocityChanged(_ sender: NSSlider) {
-        let value = CGFloat(sender.doubleValue)
-        minimumVelocityLabel.stringValue = String(format: "%.0fpx/s", value)
-        for trailView in trailViews {
-            trailView.minimumVelocity = value
-        }
+        settings.minimumVelocity = sender.doubleValue
     }
-    
+
     @objc private func blueWidthChanged(_ sender: NSSlider) {
-        let value = CGFloat(sender.doubleValue)
-        blueWidthLabel.stringValue = String(format: "%.2f", value)
-        for trailView in trailViews {
-            trailView.blueWidthMultiplier = value
-        }
+        settings.blueWidthMultiplier = sender.doubleValue
     }
-    
+
     @objc private func blueOuterOpacityChanged(_ sender: NSSlider) {
-        let value = CGFloat(sender.doubleValue)
-        blueOuterOpacityLabel.stringValue = String(format: "%.3f", value)
-        for trailView in trailViews {
-            trailView.blueOuterOpacity = value
-            trailView.updateLayerProperties()
-        }
+        settings.blueOuterOpacity = sender.doubleValue
     }
-    
+
     @objc private func blueMiddleOpacityChanged(_ sender: NSSlider) {
-        let value = CGFloat(sender.doubleValue)
-        blueMiddleOpacityLabel.stringValue = String(format: "%.3f", value)
-        for trailView in trailViews {
-            trailView.blueMiddleOpacity = value
-            trailView.updateLayerProperties()
-        }
+        settings.blueMiddleOpacity = sender.doubleValue
     }
-    
+
     @objc private func fadeDurationChanged(_ sender: NSSlider) {
-        let value = TimeInterval(sender.doubleValue)
-        fadeDurationLabel.stringValue = String(format: "%.2fs", value)
-        for trailView in trailViews {
-            trailView.fadeTime = value
-        }
+        settings.redFadeTime = sender.doubleValue
     }
-    
+
     @objc private func blueFadeDurationChanged(_ sender: NSSlider) {
-        let value = TimeInterval(sender.doubleValue)
-        blueFadeDurationLabel.stringValue = String(format: "%.2fs", value)
-        for trailView in trailViews {
-            trailView.blueFadeTime = value
-        }
+        settings.blueFadeTime = sender.doubleValue
     }
-    
+
     @objc private func redColorChanged(_ sender: NSSlider) {
-        let r = CGFloat(redColorSlider.doubleValue)
-        let g = CGFloat(greenColorSlider.doubleValue)
-        let b = CGFloat(blueColorSlider.doubleValue)
-        
-        redColorLabel.stringValue = String(format: "%.2f", r)
-        greenColorLabel.stringValue = String(format: "%.2f", g)
-        blueColorLabel.stringValue = String(format: "%.2f", b)
-        
-        let newColor = NSColor(red: r, green: g, blue: b, alpha: 1.0)
-        for trailView in trailViews {
-            trailView.trailColor = newColor
-            trailView.updateLayerProperties()
-        }
+        settings.redTrailR = redColorSlider.doubleValue
+        settings.redTrailG = greenColorSlider.doubleValue
+        settings.redTrailB = blueColorSlider.doubleValue
     }
-    
+
     @objc private func blueColorChanged(_ sender: NSSlider) {
-        let r = CGFloat(blueRedSlider.doubleValue)
-        let g = CGFloat(blueGreenSlider.doubleValue)
-        let b = CGFloat(blueBlueSlider.doubleValue)
-        
-        blueRedLabel.stringValue = String(format: "%.2f", r)
-        blueGreenLabel.stringValue = String(format: "%.2f", g)
-        blueBlueLabel.stringValue = String(format: "%.2f", b)
-        
-        let newColor = NSColor(red: r, green: g, blue: b, alpha: 1.0)
-        for trailView in trailViews {
-            trailView.blueTrailColor = newColor
-            trailView.updateLayerProperties()
-        }
+        settings.blueTrailR = blueRedSlider.doubleValue
+        settings.blueTrailG = blueGreenSlider.doubleValue
+        settings.blueTrailB = blueBlueSlider.doubleValue
     }
     
     /**
@@ -2390,92 +2338,84 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateMouseCoordinates(force: isInfoPanelVisible)
     }
     
-    /**
-     * Sets up the menu bar icon and menu
-     */
-    func setupMenuBar() {
-        // Create status item with system icon
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
-        // Use system symbol for menu bar icon
-        if let button = statusItem?.button {
-            if #available(macOS 11.0, *) {
-                button.image = NSImage(systemSymbolName: "cursorarrow.rays", accessibilityDescription: "Mouse Trail")
-            } else {
-                // Fallback for older macOS versions
-                button.title = "MT"
+    /// Apply current settings to all TrailView instances
+    func applySettingsToTrailViews() {
+        for trailView in trailViews {
+            trailView.maxWidth = CGFloat(settings.maxWidth)
+            trailView.movementThreshold = CGFloat(settings.movementThreshold)
+            trailView.minimumVelocity = CGFloat(settings.minimumVelocity)
+            trailView.blueWidthMultiplier = CGFloat(settings.blueWidthMultiplier)
+            trailView.blueOuterOpacity = CGFloat(settings.blueOuterOpacity)
+            trailView.blueMiddleOpacity = CGFloat(settings.blueMiddleOpacity)
+            trailView.fadeTime = settings.redFadeTime
+            trailView.blueFadeTime = settings.blueFadeTime
+            trailView.trailColor = settings.redTrailNSColor
+            trailView.blueTrailColor = settings.blueTrailNSColor
+            trailView.updateLayerProperties()
+        }
+
+        // Sync info panel sliders if they exist
+        movementThresholdSlider?.doubleValue = settings.movementThreshold
+        movementThresholdLabel?.stringValue = String(format: "%.0fpx", settings.movementThreshold)
+        minimumVelocitySlider?.doubleValue = settings.minimumVelocity
+        minimumVelocityLabel?.stringValue = String(format: "%.0fpx/s", settings.minimumVelocity)
+        blueWidthSlider?.doubleValue = settings.blueWidthMultiplier
+        blueWidthLabel?.stringValue = String(format: "%.2f", settings.blueWidthMultiplier)
+        blueOuterOpacitySlider?.doubleValue = settings.blueOuterOpacity
+        blueOuterOpacityLabel?.stringValue = String(format: "%.3f", settings.blueOuterOpacity)
+        blueMiddleOpacitySlider?.doubleValue = settings.blueMiddleOpacity
+        blueMiddleOpacityLabel?.stringValue = String(format: "%.3f", settings.blueMiddleOpacity)
+        fadeDurationSlider?.doubleValue = settings.redFadeTime
+        fadeDurationLabel?.stringValue = String(format: "%.2fs", settings.redFadeTime)
+        blueFadeDurationSlider?.doubleValue = settings.blueFadeTime
+        blueFadeDurationLabel?.stringValue = String(format: "%.2fs", settings.blueFadeTime)
+        redColorSlider?.doubleValue = settings.redTrailR
+        redColorLabel?.stringValue = String(format: "%.2f", settings.redTrailR)
+        greenColorSlider?.doubleValue = settings.redTrailG
+        greenColorLabel?.stringValue = String(format: "%.2f", settings.redTrailG)
+        blueColorSlider?.doubleValue = settings.redTrailB
+        blueColorLabel?.stringValue = String(format: "%.2f", settings.redTrailB)
+        blueRedSlider?.doubleValue = settings.blueTrailR
+        blueRedLabel?.stringValue = String(format: "%.2f", settings.blueTrailR)
+        blueGreenSlider?.doubleValue = settings.blueTrailG
+        blueGreenLabel?.stringValue = String(format: "%.2f", settings.blueTrailG)
+        blueBlueSlider?.doubleValue = settings.blueTrailB
+        blueBlueLabel?.stringValue = String(format: "%.2f", settings.blueTrailB)
+    }
+
+    /// Apply visibility toggle changes
+    func applyVisibilitySettings() {
+        // Trail visibility
+        if settings.isTrailVisible != isTrailVisible {
+            isTrailVisible = settings.isTrailVisible
+            for trailWindow in trailWindows {
+                if isTrailVisible {
+                    trailWindow.makeKeyAndOrderFront(nil)
+                } else {
+                    trailWindow.orderOut(nil)
+                }
             }
         }
-        
-        // Create menu
-        statusMenu = NSMenu()
-        
-        // Info Panel toggle
-        let infoPanelItem = NSMenuItem(title: "Show Info Panel", action: #selector(toggleInfoPanel), keyEquivalent: "i")
-        infoPanelItem.state = isInfoPanelVisible ? .on : .off
-        statusMenu?.addItem(infoPanelItem)
-        
-        // Trail toggle
-        let trailItem = NSMenuItem(title: "Show Trail", action: #selector(toggleTrail), keyEquivalent: "t")
-        trailItem.state = isTrailVisible ? .on : .off
-        statusMenu?.addItem(trailItem)
-        
-        // Ripple effect toggle
-        let rippleItem = NSMenuItem(title: "Enable Ripple Effect", action: #selector(toggleRipple), keyEquivalent: "")
-        rippleItem.state = isRippleEnabled ? .on : .off  // Will be .off since default is false
-        statusMenu?.addItem(rippleItem)
-        
-        statusMenu?.addItem(NSMenuItem.separator())
-        
-        // Quit item
-        statusMenu?.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        
-        // Assign menu to status item
-        statusItem?.menu = statusMenu
-    }
-    
-    /**
-     * Toggles the visibility of the info panel
-     */
-    @objc func toggleInfoPanel(_ sender: NSMenuItem) {
-        isInfoPanelVisible.toggle()
-        sender.state = isInfoPanelVisible ? .on : .off
-        
-        if isInfoPanelVisible {
-            updateMouseCoordinates(force: true)
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            window.orderOut(nil)
-        }
-    }
-    
-    /**
-     * Toggles the visibility of the trail
-     */
-    @objc func toggleTrail(_ sender: NSMenuItem) {
-        isTrailVisible.toggle()
-        sender.state = isTrailVisible ? .on : .off
-        
-        for trailWindow in trailWindows {
-            if isTrailVisible {
-                trailWindow.makeKeyAndOrderFront(nil)
+
+        // Info panel visibility
+        if settings.isInfoPanelVisible != isInfoPanelVisible {
+            isInfoPanelVisible = settings.isInfoPanelVisible
+            if isInfoPanelVisible {
+                updateMouseCoordinates(force: true)
+                window.makeKeyAndOrderFront(nil)
             } else {
-                trailWindow.orderOut(nil)
+                window.orderOut(nil)
             }
         }
-    }
-    
-    /**
-     * Toggles the ripple effect on/off
-     */
-    @objc func toggleRipple(_ sender: NSMenuItem) {
-        isRippleEnabled.toggle()
-        sender.state = isRippleEnabled ? .on : .off
-        
-        if isRippleEnabled {
-            _ = ensureRippleManager()
-        } else {
-            rippleManager?.clearAllRipples()
+
+        // Ripple effect
+        if settings.isRippleEnabled != isRippleEnabled {
+            isRippleEnabled = settings.isRippleEnabled
+            if isRippleEnabled {
+                _ = ensureRippleManager()
+            } else {
+                rippleManager?.clearAllRipples()
+            }
         }
     }
     
@@ -2602,23 +2542,3 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - Application Bootstrap
-
-/**
- * Main entry point - Sets up and runs the application
- *
- * This code:
- * 1. Creates the shared NSApplication instance
- * 2. Creates and assigns our custom AppDelegate
- * 3. Sets the app to run without a Dock icon (background utility)
- * 4. Starts the main run loop
- */
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-
-// Run as a UI element (no Dock icon, doesn't appear in app switcher)
-app.setActivationPolicy(.prohibited)
-
-// Start the application run loop
-app.run()

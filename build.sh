@@ -7,7 +7,7 @@ echo "Building MouseTrail..."
 SWIFT_FLAGS=(-O -whole-module-optimization)
 
 # Compile the Swift file
-if swiftc "${SWIFT_FLAGS[@]}" main.swift -o MouseTrail; then
+if swiftc "${SWIFT_FLAGS[@]}" *.swift -o MouseTrail; then
     echo "✓ Compilation successful"
 else
     echo "✗ Compilation failed"
