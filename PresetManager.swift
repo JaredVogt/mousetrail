@@ -37,20 +37,20 @@ class PresetManager {
             isTrailVisible: settings.isTrailVisible,
             isRippleEnabled: settings.isRippleEnabled,
             maxWidth: settings.maxWidth,
-            blueWidthMultiplier: settings.blueWidthMultiplier,
+            glowWidthMultiplier: settings.glowWidthMultiplier,
             trailAlgorithm: settings.trailAlgorithm,
             movementThreshold: settings.movementThreshold,
             minimumVelocity: settings.minimumVelocity,
-            redFadeTime: settings.redFadeTime,
-            blueFadeTime: settings.blueFadeTime,
-            redTrailR: settings.redTrailR,
-            redTrailG: settings.redTrailG,
-            redTrailB: settings.redTrailB,
-            blueTrailR: settings.blueTrailR,
-            blueTrailG: settings.blueTrailG,
-            blueTrailB: settings.blueTrailB,
-            blueOuterOpacity: settings.blueOuterOpacity,
-            blueMiddleOpacity: settings.blueMiddleOpacity
+            coreFadeTime: settings.coreFadeTime,
+            glowFadeTime: settings.glowFadeTime,
+            coreTrailR: settings.coreTrailR,
+            coreTrailG: settings.coreTrailG,
+            coreTrailB: settings.coreTrailB,
+            glowTrailR: settings.glowTrailR,
+            glowTrailG: settings.glowTrailG,
+            glowTrailB: settings.glowTrailB,
+            glowOuterOpacity: settings.glowOuterOpacity,
+            glowMiddleOpacity: settings.glowMiddleOpacity
         )
         presets[idx] = updated
         cleanSnapshot = TrailPreset(name: "", from: settings)

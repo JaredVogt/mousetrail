@@ -76,7 +76,7 @@ struct MenuBarSettingsView: View {
                 // MARK: - Trail Width
                 SectionHeader("Trail Width")
                 SettingsSlider("Max Width", value: $settings.maxWidth, range: 1...20, format: "%.1f")
-                SettingsSlider("Blue Multiplier", value: $settings.blueWidthMultiplier, range: 0.5...8.0, format: "%.1fx")
+                SettingsSlider("Glow Multiplier", value: $settings.glowWidthMultiplier, range: 0.5...8.0, format: "%.1fx")
 
                 Divider()
 
@@ -89,28 +89,28 @@ struct MenuBarSettingsView: View {
 
                 // MARK: - Fade Duration
                 SectionHeader("Fade Duration")
-                SettingsSlider("Red Trail", value: $settings.redFadeTime, range: 0.1...3.0, format: "%.2f s")
-                SettingsSlider("Blue Trail", value: $settings.blueFadeTime, range: 0.1...2.0, format: "%.2f s")
+                SettingsSlider("Core Trail", value: $settings.coreFadeTime, range: 0.1...3.0, format: "%.2f s")
+                SettingsSlider("Glow Trail", value: $settings.glowFadeTime, range: 0.1...2.0, format: "%.2f s")
 
                 Divider()
 
                 // MARK: - Colors
                 SectionHeader("Trail Colors")
-                InlineColorEditor("Red Trail",
-                    r: $settings.redTrailR,
-                    g: $settings.redTrailG,
-                    b: $settings.redTrailB)
-                InlineColorEditor("Blue Trail",
-                    r: $settings.blueTrailR,
-                    g: $settings.blueTrailG,
-                    b: $settings.blueTrailB)
+                InlineColorEditor("Core Trail",
+                    r: $settings.coreTrailR,
+                    g: $settings.coreTrailG,
+                    b: $settings.coreTrailB)
+                InlineColorEditor("Glow Trail",
+                    r: $settings.glowTrailR,
+                    g: $settings.glowTrailG,
+                    b: $settings.glowTrailB)
 
                 Divider()
 
-                // MARK: - Blue Trail Opacity
-                SectionHeader("Blue Glow Opacity")
-                SettingsSlider("Outer Glow", value: $settings.blueOuterOpacity, range: 0.005...0.15, format: "%.3f")
-                SettingsSlider("Middle Glow", value: $settings.blueMiddleOpacity, range: 0.02...0.5, format: "%.3f")
+                // MARK: - Glow Trail Opacity
+                SectionHeader("Glow Opacity")
+                SettingsSlider("Outer Glow", value: $settings.glowOuterOpacity, range: 0.005...0.15, format: "%.3f")
+                SettingsSlider("Middle Glow", value: $settings.glowMiddleOpacity, range: 0.02...0.5, format: "%.3f")
 
                 Divider()
 

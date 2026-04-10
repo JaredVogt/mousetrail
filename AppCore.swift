@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-10 09:09:17"
+let BUILD_TIMESTAMP = "2026-04-10 09:50:39"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -61,28 +61,28 @@ class TrailView: NSView {
     let renderSmoothingPasses = 2
     let interpolationAlpha: CGFloat = 0.5
     
-    /// Fade time in seconds for red trail
+    /// Fade time in seconds for core trail
     var fadeTime: TimeInterval = 0.6
     
-    /// Fade time for blue trail (faster)
-    var blueFadeTime: TimeInterval = 0.35
+    /// Fade time for glow trail (faster)
+    var glowFadeTime: TimeInterval = 0.35
     
     /// Base and max width for trail
     let baseWidth: CGFloat = 0.5
     var maxWidth: CGFloat = 8.0
     
-    /// Blue width multiplier
-    var blueWidthMultiplier: CGFloat = 3.5
+    /// Glow width multiplier
+    var glowWidthMultiplier: CGFloat = 3.5
     
-    /// Trail color (bright neon red with slight orange tint)
-    var trailColor = NSColor(red: 1.0, green: 0.15, blue: 0.1, alpha: 1.0)
+    /// Core trail color
+    var coreColor = NSColor(red: 1.0, green: 0.15, blue: 0.1, alpha: 1.0)
     
-    /// Blue trail color
-    var blueTrailColor = NSColor(red: 0.1, green: 0.5, blue: 1.0, alpha: 1.0)
+    /// Glow trail color
+    var glowColor = NSColor(red: 0.1, green: 0.5, blue: 1.0, alpha: 1.0)
     
-    /// Blue opacity values
-    var blueOuterOpacity: CGFloat = 0.02
-    var blueMiddleOpacity: CGFloat = 0.08
+    /// Glow opacity values
+    var glowOuterOpacity: CGFloat = 0.02
+    var glowMiddleOpacity: CGFloat = 0.08
     
     /// Points in the trail
     private var points: [TrailPoint] = []
@@ -95,16 +95,16 @@ class TrailView: NSView {
     var inactivityTimeout: TimeInterval = 0.5  // seconds
     var minimumVelocity: CGFloat = 0.0  // pixels per second (default to 0 for immediate trail)
     
-    /// Layers for red glow effect
-    private var outerGlowLayer: CAShapeLayer!
-    private var middleGlowLayer: CAShapeLayer!
-    private var coreLayer: CAShapeLayer!
+    /// Layers for core trail effect
+    private var coreOuterLayer: CAShapeLayer!
+    private var coreMiddleLayer: CAShapeLayer!
+    private var coreInnerLayer: CAShapeLayer!
     private var gradientMaskLayer: CAGradientLayer!
     
-    /// Layers for blue overlay effect
-    private var blueOuterGlowLayer: CAShapeLayer!
-    private var blueMiddleGlowLayer: CAShapeLayer!
-    private var blueCoreLayer: CAShapeLayer!
+    /// Layers for glow trail effect
+    private var glowOuterLayer: CAShapeLayer!
+    private var glowMiddleLayer: CAShapeLayer!
+    private var glowInnerLayer: CAShapeLayer!
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -121,113 +121,113 @@ class TrailView: NSView {
         layer?.masksToBounds = false
         
         // Outer glow layer (widest, most transparent)
-        outerGlowLayer = CAShapeLayer()
-        outerGlowLayer.fillColor = nil
-        outerGlowLayer.strokeColor = trailColor.withAlphaComponent(0.08).cgColor
-        outerGlowLayer.lineWidth = maxWidth * 3.0
-        outerGlowLayer.lineCap = .round
-        outerGlowLayer.lineJoin = .round
-        outerGlowLayer.shadowColor = trailColor.cgColor
-        outerGlowLayer.shadowRadius = 8
-        outerGlowLayer.shadowOpacity = 0.2
-        outerGlowLayer.shadowOffset = .zero
-        outerGlowLayer.frame = bounds
-        outerGlowLayer.masksToBounds = false
-        outerGlowLayer.shouldRasterize = false
-        outerGlowLayer.rasterizationScale = 2.0 // Retina quality
+        coreOuterLayer = CAShapeLayer()
+        coreOuterLayer.fillColor = nil
+        coreOuterLayer.strokeColor = coreColor.withAlphaComponent(0.08).cgColor
+        coreOuterLayer.lineWidth = maxWidth * 3.0
+        coreOuterLayer.lineCap = .round
+        coreOuterLayer.lineJoin = .round
+        coreOuterLayer.shadowColor = coreColor.cgColor
+        coreOuterLayer.shadowRadius = 8
+        coreOuterLayer.shadowOpacity = 0.2
+        coreOuterLayer.shadowOffset = .zero
+        coreOuterLayer.frame = bounds
+        coreOuterLayer.masksToBounds = false
+        coreOuterLayer.shouldRasterize = false
+        coreOuterLayer.rasterizationScale = 2.0 // Retina quality
         
         // Middle glow layer
-        middleGlowLayer = CAShapeLayer()
-        middleGlowLayer.fillColor = nil
-        middleGlowLayer.strokeColor = trailColor.withAlphaComponent(0.25).cgColor
-        middleGlowLayer.lineWidth = maxWidth * 1.8
-        middleGlowLayer.lineCap = .round
-        middleGlowLayer.lineJoin = .round
-        middleGlowLayer.shadowColor = trailColor.cgColor
-        middleGlowLayer.shadowRadius = 3
-        middleGlowLayer.shadowOpacity = 0.3
-        middleGlowLayer.shadowOffset = .zero
-        middleGlowLayer.frame = bounds
-        middleGlowLayer.masksToBounds = false
-        middleGlowLayer.shouldRasterize = false
-        middleGlowLayer.rasterizationScale = 2.0
+        coreMiddleLayer = CAShapeLayer()
+        coreMiddleLayer.fillColor = nil
+        coreMiddleLayer.strokeColor = coreColor.withAlphaComponent(0.25).cgColor
+        coreMiddleLayer.lineWidth = maxWidth * 1.8
+        coreMiddleLayer.lineCap = .round
+        coreMiddleLayer.lineJoin = .round
+        coreMiddleLayer.shadowColor = coreColor.cgColor
+        coreMiddleLayer.shadowRadius = 3
+        coreMiddleLayer.shadowOpacity = 0.3
+        coreMiddleLayer.shadowOffset = .zero
+        coreMiddleLayer.frame = bounds
+        coreMiddleLayer.masksToBounds = false
+        coreMiddleLayer.shouldRasterize = false
+        coreMiddleLayer.rasterizationScale = 2.0
         
         // Core layer (brightest, thinnest)
-        coreLayer = CAShapeLayer()
-        coreLayer.fillColor = nil
-        coreLayer.strokeColor = NSColor.white.withAlphaComponent(0.95).cgColor
-        coreLayer.lineWidth = maxWidth * 0.3
-        coreLayer.lineCap = .round
-        coreLayer.lineJoin = .round
-        coreLayer.shadowColor = NSColor.white.cgColor
-        coreLayer.shadowRadius = 1
-        coreLayer.shadowOpacity = 0.4
-        coreLayer.shadowOffset = .zero
-        coreLayer.frame = bounds
-        coreLayer.masksToBounds = false
-        coreLayer.shouldRasterize = false
-        coreLayer.rasterizationScale = 2.0
+        coreInnerLayer = CAShapeLayer()
+        coreInnerLayer.fillColor = nil
+        coreInnerLayer.strokeColor = NSColor.white.withAlphaComponent(0.95).cgColor
+        coreInnerLayer.lineWidth = maxWidth * 0.3
+        coreInnerLayer.lineCap = .round
+        coreInnerLayer.lineJoin = .round
+        coreInnerLayer.shadowColor = NSColor.white.cgColor
+        coreInnerLayer.shadowRadius = 1
+        coreInnerLayer.shadowOpacity = 0.4
+        coreInnerLayer.shadowOffset = .zero
+        coreInnerLayer.frame = bounds
+        coreInnerLayer.masksToBounds = false
+        coreInnerLayer.shouldRasterize = false
+        coreInnerLayer.rasterizationScale = 2.0
         
-        // Blue outer glow layer (widest overall) - steeper opacity falloff
-        blueOuterGlowLayer = CAShapeLayer()
-        blueOuterGlowLayer.fillColor = nil
-        blueOuterGlowLayer.strokeColor = blueTrailColor.withAlphaComponent(blueOuterOpacity).cgColor
-        blueOuterGlowLayer.lineWidth = maxWidth * 3.0 * blueWidthMultiplier
-        blueOuterGlowLayer.lineCap = .round
-        blueOuterGlowLayer.lineJoin = .round
-        blueOuterGlowLayer.shadowColor = blueTrailColor.cgColor
-        blueOuterGlowLayer.shadowRadius = 10
-        blueOuterGlowLayer.shadowOpacity = 0.1
-        blueOuterGlowLayer.shadowOffset = .zero
-        blueOuterGlowLayer.frame = bounds
-        blueOuterGlowLayer.masksToBounds = false
-        blueOuterGlowLayer.shouldRasterize = false
-        blueOuterGlowLayer.rasterizationScale = 2.0
+        // Glow outer layer (widest overall) - steeper opacity falloff
+        glowOuterLayer = CAShapeLayer()
+        glowOuterLayer.fillColor = nil
+        glowOuterLayer.strokeColor = glowColor.withAlphaComponent(glowOuterOpacity).cgColor
+        glowOuterLayer.lineWidth = maxWidth * 3.0 * glowWidthMultiplier
+        glowOuterLayer.lineCap = .round
+        glowOuterLayer.lineJoin = .round
+        glowOuterLayer.shadowColor = glowColor.cgColor
+        glowOuterLayer.shadowRadius = 10
+        glowOuterLayer.shadowOpacity = 0.1
+        glowOuterLayer.shadowOffset = .zero
+        glowOuterLayer.frame = bounds
+        glowOuterLayer.masksToBounds = false
+        glowOuterLayer.shouldRasterize = false
+        glowOuterLayer.rasterizationScale = 2.0
         
-        // Blue middle glow layer - steeper opacity
-        blueMiddleGlowLayer = CAShapeLayer()
-        blueMiddleGlowLayer.fillColor = nil
-        blueMiddleGlowLayer.strokeColor = blueTrailColor.withAlphaComponent(blueMiddleOpacity).cgColor
-        blueMiddleGlowLayer.lineWidth = maxWidth * 1.8 * blueWidthMultiplier
-        blueMiddleGlowLayer.lineCap = .round
-        blueMiddleGlowLayer.lineJoin = .round
-        blueMiddleGlowLayer.shadowColor = blueTrailColor.cgColor
-        blueMiddleGlowLayer.shadowRadius = 4
-        blueMiddleGlowLayer.shadowOpacity = 0.15
-        blueMiddleGlowLayer.shadowOffset = .zero
-        blueMiddleGlowLayer.frame = bounds
-        blueMiddleGlowLayer.masksToBounds = false
-        blueMiddleGlowLayer.shouldRasterize = false
-        blueMiddleGlowLayer.rasterizationScale = 2.0
+        // Glow middle layer - steeper opacity
+        glowMiddleLayer = CAShapeLayer()
+        glowMiddleLayer.fillColor = nil
+        glowMiddleLayer.strokeColor = glowColor.withAlphaComponent(glowMiddleOpacity).cgColor
+        glowMiddleLayer.lineWidth = maxWidth * 1.8 * glowWidthMultiplier
+        glowMiddleLayer.lineCap = .round
+        glowMiddleLayer.lineJoin = .round
+        glowMiddleLayer.shadowColor = glowColor.cgColor
+        glowMiddleLayer.shadowRadius = 4
+        glowMiddleLayer.shadowOpacity = 0.15
+        glowMiddleLayer.shadowOffset = .zero
+        glowMiddleLayer.frame = bounds
+        glowMiddleLayer.masksToBounds = false
+        glowMiddleLayer.shouldRasterize = false
+        glowMiddleLayer.rasterizationScale = 2.0
         
-        // Blue core layer (bright blue-white)
-        blueCoreLayer = CAShapeLayer()
-        blueCoreLayer.fillColor = nil
-        blueCoreLayer.strokeColor = NSColor(red: 0.7, green: 0.85, blue: 1.0, alpha: 0.9).cgColor
-        blueCoreLayer.lineWidth = maxWidth * 0.4 * blueWidthMultiplier
-        blueCoreLayer.lineCap = .round
-        blueCoreLayer.lineJoin = .round
-        blueCoreLayer.shadowColor = NSColor.white.cgColor
-        blueCoreLayer.shadowRadius = 1
-        blueCoreLayer.shadowOpacity = 0.3
-        blueCoreLayer.shadowOffset = .zero
-        blueCoreLayer.frame = bounds
-        blueCoreLayer.masksToBounds = false
-        blueCoreLayer.shouldRasterize = false
-        blueCoreLayer.rasterizationScale = 2.0
+        // Glow inner layer
+        glowInnerLayer = CAShapeLayer()
+        glowInnerLayer.fillColor = nil
+        glowInnerLayer.strokeColor = NSColor(red: 0.7, green: 0.85, blue: 1.0, alpha: 0.9).cgColor
+        glowInnerLayer.lineWidth = maxWidth * 0.4 * glowWidthMultiplier
+        glowInnerLayer.lineCap = .round
+        glowInnerLayer.lineJoin = .round
+        glowInnerLayer.shadowColor = NSColor.white.cgColor
+        glowInnerLayer.shadowRadius = 1
+        glowInnerLayer.shadowOpacity = 0.3
+        glowInnerLayer.shadowOffset = .zero
+        glowInnerLayer.frame = bounds
+        glowInnerLayer.masksToBounds = false
+        glowInnerLayer.shouldRasterize = false
+        glowInnerLayer.rasterizationScale = 2.0
         
         // Create container for all trail layers
         let trailContainer = CALayer()
         trailContainer.frame = bounds
         trailContainer.masksToBounds = false
-        // Add red layers first (bottom)
-        trailContainer.addSublayer(outerGlowLayer)
-        trailContainer.addSublayer(middleGlowLayer)
-        trailContainer.addSublayer(coreLayer)
-        // Add blue layers on top
-        trailContainer.addSublayer(blueOuterGlowLayer)
-        trailContainer.addSublayer(blueMiddleGlowLayer)
-        trailContainer.addSublayer(blueCoreLayer)
+        // Add core layers first (bottom)
+        trailContainer.addSublayer(coreOuterLayer)
+        trailContainer.addSublayer(coreMiddleLayer)
+        trailContainer.addSublayer(coreInnerLayer)
+        // Add glow layers on top
+        trailContainer.addSublayer(glowOuterLayer)
+        trailContainer.addSublayer(glowMiddleLayer)
+        trailContainer.addSublayer(glowInnerLayer)
         
         // Setup gradient mask for smooth fading
         gradientMaskLayer = CAGradientLayer()
@@ -252,12 +252,12 @@ class TrailView: NSView {
     override var frame: NSRect {
         didSet {
             // Update all layer frames when view frame changes
-            outerGlowLayer?.frame = bounds
-            middleGlowLayer?.frame = bounds
-            coreLayer?.frame = bounds
-            blueOuterGlowLayer?.frame = bounds
-            blueMiddleGlowLayer?.frame = bounds
-            blueCoreLayer?.frame = bounds
+            coreOuterLayer?.frame = bounds
+            coreMiddleLayer?.frame = bounds
+            coreInnerLayer?.frame = bounds
+            glowOuterLayer?.frame = bounds
+            glowMiddleLayer?.frame = bounds
+            glowInnerLayer?.frame = bounds
             gradientMaskLayer?.frame = bounds
         }
     }
@@ -454,12 +454,12 @@ class TrailView: NSView {
         startPosition = nil
         isTrailActive = false
         lastMovementTime = 0
-        clearTrailLayers([outerGlowLayer, middleGlowLayer, coreLayer])
-        clearTrailLayers([blueOuterGlowLayer, blueMiddleGlowLayer, blueCoreLayer])
+        clearTrailLayers([coreOuterLayer, coreMiddleLayer, coreInnerLayer])
+        clearTrailLayers([glowOuterLayer, glowMiddleLayer, glowInnerLayer])
     }
 
     private func applyLineWidths(for trailPoints: [TrailPoint], to layers: [CAShapeLayer], isBlue: Bool) {
-        let widthMultiplier = isBlue ? blueWidthMultiplier : 1.0
+        let widthMultiplier = isBlue ? glowWidthMultiplier : 1.0
 
         guard layers.count >= 3 else { return }
 
@@ -578,22 +578,22 @@ class TrailView: NSView {
     
     /// Update layer colors and properties when values change
     func updateLayerProperties() {
-        // Update red trail color
-        outerGlowLayer?.strokeColor = trailColor.withAlphaComponent(0.08).cgColor
-        outerGlowLayer?.shadowColor = trailColor.cgColor
-        middleGlowLayer?.strokeColor = trailColor.withAlphaComponent(0.2).cgColor
-        middleGlowLayer?.shadowColor = trailColor.cgColor
-        coreLayer?.strokeColor = trailColor.withAlphaComponent(0.9).cgColor
-        coreLayer?.shadowColor = trailColor.cgColor
+        // Update core trail color
+        coreOuterLayer?.strokeColor = coreColor.withAlphaComponent(0.08).cgColor
+        coreOuterLayer?.shadowColor = coreColor.cgColor
+        coreMiddleLayer?.strokeColor = coreColor.withAlphaComponent(0.2).cgColor
+        coreMiddleLayer?.shadowColor = coreColor.cgColor
+        coreInnerLayer?.strokeColor = coreColor.withAlphaComponent(0.9).cgColor
+        coreInnerLayer?.shadowColor = coreColor.cgColor
         
-        // Update blue trail color and opacity
-        blueOuterGlowLayer?.strokeColor = blueTrailColor.withAlphaComponent(blueOuterOpacity).cgColor
-        blueOuterGlowLayer?.shadowColor = blueTrailColor.cgColor
-        blueMiddleGlowLayer?.strokeColor = blueTrailColor.withAlphaComponent(blueMiddleOpacity).cgColor
-        blueMiddleGlowLayer?.shadowColor = blueTrailColor.cgColor
-        blueCoreLayer?.strokeColor = NSColor(red: 0.7 * blueTrailColor.redComponent, 
-                                           green: 0.85 * blueTrailColor.greenComponent, 
-                                           blue: blueTrailColor.blueComponent, 
+        // Update glow trail color and opacity
+        glowOuterLayer?.strokeColor = glowColor.withAlphaComponent(glowOuterOpacity).cgColor
+        glowOuterLayer?.shadowColor = glowColor.cgColor
+        glowMiddleLayer?.strokeColor = glowColor.withAlphaComponent(glowMiddleOpacity).cgColor
+        glowMiddleLayer?.shadowColor = glowColor.cgColor
+        glowInnerLayer?.strokeColor = NSColor(red: 0.7 * glowColor.redComponent, 
+                                           green: 0.85 * glowColor.greenComponent, 
+                                           blue: glowColor.blueComponent, 
                                            alpha: 0.9).cgColor
     }
     
@@ -603,17 +603,17 @@ class TrailView: NSView {
         points.removeAll { now - $0.timestamp > fadeTime }
 
         guard !points.isEmpty else {
-            clearTrailLayers([outerGlowLayer, middleGlowLayer, coreLayer])
-            clearTrailLayers([blueOuterGlowLayer, blueMiddleGlowLayer, blueCoreLayer])
+            clearTrailLayers([coreOuterLayer, coreMiddleLayer, coreInnerLayer])
+            clearTrailLayers([glowOuterLayer, glowMiddleLayer, glowInnerLayer])
             return
         }
 
-        // Build red trail
-        buildTrailPath(for: points, layers: [outerGlowLayer, middleGlowLayer, coreLayer])
+        // Build core trail
+        buildTrailPath(for: points, layers: [coreOuterLayer, coreMiddleLayer, coreInnerLayer])
 
-        // Build blue trail with shorter fade
-        let bluePoints = points.filter { now - $0.timestamp <= blueFadeTime }
-        buildTrailPath(for: bluePoints, layers: [blueOuterGlowLayer, blueMiddleGlowLayer, blueCoreLayer], isBlue: true)
+        // Build glow trail with shorter fade
+        let bluePoints = points.filter { now - $0.timestamp <= glowFadeTime }
+        buildTrailPath(for: bluePoints, layers: [glowOuterLayer, glowMiddleLayer, glowInnerLayer], isBlue: true)
     }
     
     /// Build trail path for given points and layers
@@ -1584,13 +1584,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         trailView.maxWidth = CGFloat(settings.maxWidth)
         trailView.movementThreshold = CGFloat(settings.movementThreshold)
         trailView.minimumVelocity = CGFloat(settings.minimumVelocity)
-        trailView.blueWidthMultiplier = CGFloat(settings.blueWidthMultiplier)
-        trailView.blueOuterOpacity = CGFloat(settings.blueOuterOpacity)
-        trailView.blueMiddleOpacity = CGFloat(settings.blueMiddleOpacity)
-        trailView.fadeTime = settings.redFadeTime
-        trailView.blueFadeTime = settings.blueFadeTime
-        trailView.trailColor = settings.redTrailNSColor
-        trailView.blueTrailColor = settings.blueTrailNSColor
+        trailView.glowWidthMultiplier = CGFloat(settings.glowWidthMultiplier)
+        trailView.glowOuterOpacity = CGFloat(settings.glowOuterOpacity)
+        trailView.glowMiddleOpacity = CGFloat(settings.glowMiddleOpacity)
+        trailView.fadeTime = settings.coreFadeTime
+        trailView.glowFadeTime = settings.glowFadeTime
+        trailView.coreColor = settings.coreTrailNSColor
+        trailView.glowColor = settings.glowTrailNSColor
         trailView.updateLayerProperties()
     }
 
@@ -2220,13 +2220,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             trailView.maxWidth = CGFloat(settings.maxWidth)
             trailView.movementThreshold = CGFloat(settings.movementThreshold)
             trailView.minimumVelocity = CGFloat(settings.minimumVelocity)
-            trailView.blueWidthMultiplier = CGFloat(settings.blueWidthMultiplier)
-            trailView.blueOuterOpacity = CGFloat(settings.blueOuterOpacity)
-            trailView.blueMiddleOpacity = CGFloat(settings.blueMiddleOpacity)
-            trailView.fadeTime = settings.redFadeTime
-            trailView.blueFadeTime = settings.blueFadeTime
-            trailView.trailColor = settings.redTrailNSColor
-            trailView.blueTrailColor = settings.blueTrailNSColor
+            trailView.glowWidthMultiplier = CGFloat(settings.glowWidthMultiplier)
+            trailView.glowOuterOpacity = CGFloat(settings.glowOuterOpacity)
+            trailView.glowMiddleOpacity = CGFloat(settings.glowMiddleOpacity)
+            trailView.fadeTime = settings.coreFadeTime
+            trailView.glowFadeTime = settings.glowFadeTime
+            trailView.coreColor = settings.coreTrailNSColor
+            trailView.glowColor = settings.glowTrailNSColor
             trailView.updateLayerProperties()
         }
     }

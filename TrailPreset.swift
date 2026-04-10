@@ -12,7 +12,7 @@ struct TrailPreset: Codable, Identifiable, Equatable {
 
     // Trail Width
     var maxWidth: Double
-    var blueWidthMultiplier: Double
+    var glowWidthMultiplier: Double
     var trailAlgorithm: TrailAlgorithm
 
     // Movement
@@ -20,42 +20,42 @@ struct TrailPreset: Codable, Identifiable, Equatable {
     var minimumVelocity: Double
 
     // Fade Duration
-    var redFadeTime: Double
-    var blueFadeTime: Double
+    var coreFadeTime: Double
+    var glowFadeTime: Double
 
     // Red Trail Color
-    var redTrailR: Double
-    var redTrailG: Double
-    var redTrailB: Double
+    var coreTrailR: Double
+    var coreTrailG: Double
+    var coreTrailB: Double
 
     // Blue Trail Color
-    var blueTrailR: Double
-    var blueTrailG: Double
-    var blueTrailB: Double
+    var glowTrailR: Double
+    var glowTrailG: Double
+    var glowTrailB: Double
 
     // Blue Glow Opacity
-    var blueOuterOpacity: Double
-    var blueMiddleOpacity: Double
+    var glowOuterOpacity: Double
+    var glowMiddleOpacity: Double
 
     /// Compare only the setting values, ignoring id/name/dates.
     func settingsMatch(_ other: TrailPreset) -> Bool {
         isTrailVisible == other.isTrailVisible
             && isRippleEnabled == other.isRippleEnabled
             && maxWidth == other.maxWidth
-            && blueWidthMultiplier == other.blueWidthMultiplier
+            && glowWidthMultiplier == other.glowWidthMultiplier
             && trailAlgorithm == other.trailAlgorithm
             && movementThreshold == other.movementThreshold
             && minimumVelocity == other.minimumVelocity
-            && redFadeTime == other.redFadeTime
-            && blueFadeTime == other.blueFadeTime
-            && redTrailR == other.redTrailR
-            && redTrailG == other.redTrailG
-            && redTrailB == other.redTrailB
-            && blueTrailR == other.blueTrailR
-            && blueTrailG == other.blueTrailG
-            && blueTrailB == other.blueTrailB
-            && blueOuterOpacity == other.blueOuterOpacity
-            && blueMiddleOpacity == other.blueMiddleOpacity
+            && coreFadeTime == other.coreFadeTime
+            && glowFadeTime == other.glowFadeTime
+            && coreTrailR == other.coreTrailR
+            && coreTrailG == other.coreTrailG
+            && coreTrailB == other.coreTrailB
+            && glowTrailR == other.glowTrailR
+            && glowTrailG == other.glowTrailG
+            && glowTrailB == other.glowTrailB
+            && glowOuterOpacity == other.glowOuterOpacity
+            && glowMiddleOpacity == other.glowMiddleOpacity
     }
 }
 
@@ -68,20 +68,20 @@ extension TrailPreset {
         case isTrailVisible
         case isRippleEnabled
         case maxWidth
-        case blueWidthMultiplier
+        case glowWidthMultiplier
         case trailAlgorithm
         case movementThreshold
         case minimumVelocity
-        case redFadeTime
-        case blueFadeTime
-        case redTrailR
-        case redTrailG
-        case redTrailB
-        case blueTrailR
-        case blueTrailG
-        case blueTrailB
-        case blueOuterOpacity
-        case blueMiddleOpacity
+        case coreFadeTime
+        case glowFadeTime
+        case coreTrailR
+        case coreTrailG
+        case coreTrailB
+        case glowTrailR
+        case glowTrailG
+        case glowTrailB
+        case glowOuterOpacity
+        case glowMiddleOpacity
     }
 
     init(from decoder: Decoder) throws {
@@ -93,20 +93,20 @@ extension TrailPreset {
         isTrailVisible = try container.decode(Bool.self, forKey: .isTrailVisible)
         isRippleEnabled = try container.decode(Bool.self, forKey: .isRippleEnabled)
         maxWidth = try container.decode(Double.self, forKey: .maxWidth)
-        blueWidthMultiplier = try container.decode(Double.self, forKey: .blueWidthMultiplier)
+        glowWidthMultiplier = try container.decode(Double.self, forKey: .glowWidthMultiplier)
         trailAlgorithm = try container.decodeIfPresent(TrailAlgorithm.self, forKey: .trailAlgorithm) ?? .smooth
         movementThreshold = try container.decode(Double.self, forKey: .movementThreshold)
         minimumVelocity = try container.decode(Double.self, forKey: .minimumVelocity)
-        redFadeTime = try container.decode(Double.self, forKey: .redFadeTime)
-        blueFadeTime = try container.decode(Double.self, forKey: .blueFadeTime)
-        redTrailR = try container.decode(Double.self, forKey: .redTrailR)
-        redTrailG = try container.decode(Double.self, forKey: .redTrailG)
-        redTrailB = try container.decode(Double.self, forKey: .redTrailB)
-        blueTrailR = try container.decode(Double.self, forKey: .blueTrailR)
-        blueTrailG = try container.decode(Double.self, forKey: .blueTrailG)
-        blueTrailB = try container.decode(Double.self, forKey: .blueTrailB)
-        blueOuterOpacity = try container.decode(Double.self, forKey: .blueOuterOpacity)
-        blueMiddleOpacity = try container.decode(Double.self, forKey: .blueMiddleOpacity)
+        coreFadeTime = try container.decode(Double.self, forKey: .coreFadeTime)
+        glowFadeTime = try container.decode(Double.self, forKey: .glowFadeTime)
+        coreTrailR = try container.decode(Double.self, forKey: .coreTrailR)
+        coreTrailG = try container.decode(Double.self, forKey: .coreTrailG)
+        coreTrailB = try container.decode(Double.self, forKey: .coreTrailB)
+        glowTrailR = try container.decode(Double.self, forKey: .glowTrailR)
+        glowTrailG = try container.decode(Double.self, forKey: .glowTrailG)
+        glowTrailB = try container.decode(Double.self, forKey: .glowTrailB)
+        glowOuterOpacity = try container.decode(Double.self, forKey: .glowOuterOpacity)
+        glowMiddleOpacity = try container.decode(Double.self, forKey: .glowMiddleOpacity)
     }
 
     init(name: String, from settings: TrailSettings) {
@@ -117,19 +117,19 @@ extension TrailPreset {
         self.isTrailVisible = settings.isTrailVisible
         self.isRippleEnabled = settings.isRippleEnabled
         self.maxWidth = settings.maxWidth
-        self.blueWidthMultiplier = settings.blueWidthMultiplier
+        self.glowWidthMultiplier = settings.glowWidthMultiplier
         self.trailAlgorithm = settings.trailAlgorithm
         self.movementThreshold = settings.movementThreshold
         self.minimumVelocity = settings.minimumVelocity
-        self.redFadeTime = settings.redFadeTime
-        self.blueFadeTime = settings.blueFadeTime
-        self.redTrailR = settings.redTrailR
-        self.redTrailG = settings.redTrailG
-        self.redTrailB = settings.redTrailB
-        self.blueTrailR = settings.blueTrailR
-        self.blueTrailG = settings.blueTrailG
-        self.blueTrailB = settings.blueTrailB
-        self.blueOuterOpacity = settings.blueOuterOpacity
-        self.blueMiddleOpacity = settings.blueMiddleOpacity
+        self.coreFadeTime = settings.coreFadeTime
+        self.glowFadeTime = settings.glowFadeTime
+        self.coreTrailR = settings.coreTrailR
+        self.coreTrailG = settings.coreTrailG
+        self.coreTrailB = settings.coreTrailB
+        self.glowTrailR = settings.glowTrailR
+        self.glowTrailG = settings.glowTrailG
+        self.glowTrailB = settings.glowTrailB
+        self.glowOuterOpacity = settings.glowOuterOpacity
+        self.glowMiddleOpacity = settings.glowMiddleOpacity
     }
 }

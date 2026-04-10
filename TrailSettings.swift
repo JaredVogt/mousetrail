@@ -30,7 +30,7 @@ class TrailSettings {
     // MARK: - Trail Width
 
     var maxWidth = 8.0 { didSet { save(); onChanged?() } }
-    var blueWidthMultiplier = 3.5 { didSet { save(); onChanged?() } }
+    var glowWidthMultiplier = 3.5 { didSet { save(); onChanged?() } }
 
     // MARK: - Trail Motion
 
@@ -43,74 +43,74 @@ class TrailSettings {
 
     // MARK: - Fade Duration
 
-    var redFadeTime = 0.6 { didSet { save(); onChanged?() } }
-    var blueFadeTime = 0.35 { didSet { save(); onChanged?() } }
+    var coreFadeTime = 0.6 { didSet { save(); onChanged?() } }
+    var glowFadeTime = 0.35 { didSet { save(); onChanged?() } }
 
-    // MARK: - Red Trail Color (RGB components)
+    // MARK: - Core Trail Color (RGB components)
 
-    var redTrailR = 1.0 { didSet { save(); onChanged?() } }
-    var redTrailG = 0.15 { didSet { save(); onChanged?() } }
-    var redTrailB = 0.1 { didSet { save(); onChanged?() } }
+    var coreTrailR = 1.0 { didSet { save(); onChanged?() } }
+    var coreTrailG = 0.15 { didSet { save(); onChanged?() } }
+    var coreTrailB = 0.1 { didSet { save(); onChanged?() } }
 
-    // MARK: - Blue Trail Color (RGB components)
+    // MARK: - Glow Trail Color (RGB components)
 
-    var blueTrailR = 0.1 { didSet { save(); onChanged?() } }
-    var blueTrailG = 0.5 { didSet { save(); onChanged?() } }
-    var blueTrailB = 1.0 { didSet { save(); onChanged?() } }
+    var glowTrailR = 0.1 { didSet { save(); onChanged?() } }
+    var glowTrailG = 0.5 { didSet { save(); onChanged?() } }
+    var glowTrailB = 1.0 { didSet { save(); onChanged?() } }
 
-    // MARK: - Blue Trail Opacity
+    // MARK: - Glow Trail Opacity
 
-    var blueOuterOpacity = 0.02 { didSet { save(); onChanged?() } }
-    var blueMiddleOpacity = 0.08 { didSet { save(); onChanged?() } }
+    var glowOuterOpacity = 0.02 { didSet { save(); onChanged?() } }
+    var glowMiddleOpacity = 0.08 { didSet { save(); onChanged?() } }
 
     // MARK: - Computed Colors
 
-    var redTrailColor: Color {
-        get { Color(red: redTrailR, green: redTrailG, blue: redTrailB) }
+    var coreTrailColor: Color {
+        get { Color(red: coreTrailR, green: coreTrailG, blue: coreTrailB) }
         set {
             guard let components = NSColor(newValue).usingColorSpace(.sRGB) else { return }
-            redTrailR = components.redComponent
-            redTrailG = components.greenComponent
-            redTrailB = components.blueComponent
+            coreTrailR = components.redComponent
+            coreTrailG = components.greenComponent
+            coreTrailB = components.blueComponent
         }
     }
 
-    var blueTrailColor: Color {
-        get { Color(red: blueTrailR, green: blueTrailG, blue: blueTrailB) }
+    var glowTrailColor: Color {
+        get { Color(red: glowTrailR, green: glowTrailG, blue: glowTrailB) }
         set {
             guard let components = NSColor(newValue).usingColorSpace(.sRGB) else { return }
-            blueTrailR = components.redComponent
-            blueTrailG = components.greenComponent
-            blueTrailB = components.blueComponent
+            glowTrailR = components.redComponent
+            glowTrailG = components.greenComponent
+            glowTrailB = components.blueComponent
         }
     }
 
-    var redTrailNSColor: NSColor {
-        NSColor(red: redTrailR, green: redTrailG, blue: redTrailB, alpha: 1.0)
+    var coreTrailNSColor: NSColor {
+        NSColor(red: coreTrailR, green: coreTrailG, blue: coreTrailB, alpha: 1.0)
     }
 
-    var blueTrailNSColor: NSColor {
-        NSColor(red: blueTrailR, green: blueTrailG, blue: blueTrailB, alpha: 1.0)
+    var glowTrailNSColor: NSColor {
+        NSColor(red: glowTrailR, green: glowTrailG, blue: glowTrailB, alpha: 1.0)
     }
 
     // MARK: - Persistence
 
     private enum Keys {
         static let maxWidth = "trail.maxWidth"
-        static let blueWidthMultiplier = "trail.blueWidthMultiplier"
+        static let glowWidthMultiplier = "trail.glowWidthMultiplier"
         static let trailAlgorithm = "trail.algorithm"
         static let movementThreshold = "trail.movementThreshold"
         static let minimumVelocity = "trail.minimumVelocity"
-        static let redFadeTime = "trail.redFadeTime"
-        static let blueFadeTime = "trail.blueFadeTime"
-        static let blueOuterOpacity = "trail.blueOuterOpacity"
-        static let blueMiddleOpacity = "trail.blueMiddleOpacity"
-        static let redTrailR = "trail.redTrailR"
-        static let redTrailG = "trail.redTrailG"
-        static let redTrailB = "trail.redTrailB"
-        static let blueTrailR = "trail.blueTrailR"
-        static let blueTrailG = "trail.blueTrailG"
-        static let blueTrailB = "trail.blueTrailB"
+        static let coreFadeTime = "trail.coreFadeTime"
+        static let glowFadeTime = "trail.glowFadeTime"
+        static let glowOuterOpacity = "trail.glowOuterOpacity"
+        static let glowMiddleOpacity = "trail.glowMiddleOpacity"
+        static let coreTrailR = "trail.coreTrailR"
+        static let coreTrailG = "trail.coreTrailG"
+        static let coreTrailB = "trail.coreTrailB"
+        static let glowTrailR = "trail.glowTrailR"
+        static let glowTrailG = "trail.glowTrailG"
+        static let glowTrailB = "trail.glowTrailB"
         static let isTrailVisible = "trail.isTrailVisible"
         static let isRippleEnabled = "trail.isRippleEnabled"
     }
@@ -121,20 +121,20 @@ class TrailSettings {
         guard !isSuppressingCallbacks else { return }
         let d = UserDefaults.standard
         d.set(maxWidth, forKey: Keys.maxWidth)
-        d.set(blueWidthMultiplier, forKey: Keys.blueWidthMultiplier)
+        d.set(glowWidthMultiplier, forKey: Keys.glowWidthMultiplier)
         d.set(trailAlgorithm.rawValue, forKey: Keys.trailAlgorithm)
         d.set(movementThreshold, forKey: Keys.movementThreshold)
         d.set(minimumVelocity, forKey: Keys.minimumVelocity)
-        d.set(redFadeTime, forKey: Keys.redFadeTime)
-        d.set(blueFadeTime, forKey: Keys.blueFadeTime)
-        d.set(blueOuterOpacity, forKey: Keys.blueOuterOpacity)
-        d.set(blueMiddleOpacity, forKey: Keys.blueMiddleOpacity)
-        d.set(redTrailR, forKey: Keys.redTrailR)
-        d.set(redTrailG, forKey: Keys.redTrailG)
-        d.set(redTrailB, forKey: Keys.redTrailB)
-        d.set(blueTrailR, forKey: Keys.blueTrailR)
-        d.set(blueTrailG, forKey: Keys.blueTrailG)
-        d.set(blueTrailB, forKey: Keys.blueTrailB)
+        d.set(coreFadeTime, forKey: Keys.coreFadeTime)
+        d.set(glowFadeTime, forKey: Keys.glowFadeTime)
+        d.set(glowOuterOpacity, forKey: Keys.glowOuterOpacity)
+        d.set(glowMiddleOpacity, forKey: Keys.glowMiddleOpacity)
+        d.set(coreTrailR, forKey: Keys.coreTrailR)
+        d.set(coreTrailG, forKey: Keys.coreTrailG)
+        d.set(coreTrailB, forKey: Keys.coreTrailB)
+        d.set(glowTrailR, forKey: Keys.glowTrailR)
+        d.set(glowTrailG, forKey: Keys.glowTrailG)
+        d.set(glowTrailB, forKey: Keys.glowTrailB)
         d.set(isTrailVisible, forKey: Keys.isTrailVisible)
         d.set(isRippleEnabled, forKey: Keys.isRippleEnabled)
     }
@@ -149,23 +149,23 @@ class TrailSettings {
         }
 
         if d.object(forKey: Keys.maxWidth) != nil { maxWidth = d.double(forKey: Keys.maxWidth) }
-        if d.object(forKey: Keys.blueWidthMultiplier) != nil { blueWidthMultiplier = d.double(forKey: Keys.blueWidthMultiplier) }
+        if d.object(forKey: Keys.glowWidthMultiplier) != nil { glowWidthMultiplier = d.double(forKey: Keys.glowWidthMultiplier) }
         if let rawValue = d.string(forKey: Keys.trailAlgorithm),
            let trailAlgorithm = TrailAlgorithm(rawValue: rawValue) {
             self.trailAlgorithm = trailAlgorithm
         }
         if d.object(forKey: Keys.movementThreshold) != nil { movementThreshold = d.double(forKey: Keys.movementThreshold) }
         if d.object(forKey: Keys.minimumVelocity) != nil { minimumVelocity = d.double(forKey: Keys.minimumVelocity) }
-        if d.object(forKey: Keys.redFadeTime) != nil { redFadeTime = d.double(forKey: Keys.redFadeTime) }
-        if d.object(forKey: Keys.blueFadeTime) != nil { blueFadeTime = d.double(forKey: Keys.blueFadeTime) }
-        if d.object(forKey: Keys.blueOuterOpacity) != nil { blueOuterOpacity = d.double(forKey: Keys.blueOuterOpacity) }
-        if d.object(forKey: Keys.blueMiddleOpacity) != nil { blueMiddleOpacity = d.double(forKey: Keys.blueMiddleOpacity) }
-        if d.object(forKey: Keys.redTrailR) != nil { redTrailR = d.double(forKey: Keys.redTrailR) }
-        if d.object(forKey: Keys.redTrailG) != nil { redTrailG = d.double(forKey: Keys.redTrailG) }
-        if d.object(forKey: Keys.redTrailB) != nil { redTrailB = d.double(forKey: Keys.redTrailB) }
-        if d.object(forKey: Keys.blueTrailR) != nil { blueTrailR = d.double(forKey: Keys.blueTrailR) }
-        if d.object(forKey: Keys.blueTrailG) != nil { blueTrailG = d.double(forKey: Keys.blueTrailG) }
-        if d.object(forKey: Keys.blueTrailB) != nil { blueTrailB = d.double(forKey: Keys.blueTrailB) }
+        if d.object(forKey: Keys.coreFadeTime) != nil { coreFadeTime = d.double(forKey: Keys.coreFadeTime) }
+        if d.object(forKey: Keys.glowFadeTime) != nil { glowFadeTime = d.double(forKey: Keys.glowFadeTime) }
+        if d.object(forKey: Keys.glowOuterOpacity) != nil { glowOuterOpacity = d.double(forKey: Keys.glowOuterOpacity) }
+        if d.object(forKey: Keys.glowMiddleOpacity) != nil { glowMiddleOpacity = d.double(forKey: Keys.glowMiddleOpacity) }
+        if d.object(forKey: Keys.coreTrailR) != nil { coreTrailR = d.double(forKey: Keys.coreTrailR) }
+        if d.object(forKey: Keys.coreTrailG) != nil { coreTrailG = d.double(forKey: Keys.coreTrailG) }
+        if d.object(forKey: Keys.coreTrailB) != nil { coreTrailB = d.double(forKey: Keys.coreTrailB) }
+        if d.object(forKey: Keys.glowTrailR) != nil { glowTrailR = d.double(forKey: Keys.glowTrailR) }
+        if d.object(forKey: Keys.glowTrailG) != nil { glowTrailG = d.double(forKey: Keys.glowTrailG) }
+        if d.object(forKey: Keys.glowTrailB) != nil { glowTrailB = d.double(forKey: Keys.glowTrailB) }
         if d.object(forKey: Keys.isTrailVisible) != nil { isTrailVisible = d.bool(forKey: Keys.isTrailVisible) }
         if d.object(forKey: Keys.isRippleEnabled) != nil { isRippleEnabled = d.bool(forKey: Keys.isRippleEnabled) }
     }
@@ -175,20 +175,20 @@ class TrailSettings {
         isTrailVisible = preset.isTrailVisible
         isRippleEnabled = preset.isRippleEnabled
         maxWidth = preset.maxWidth
-        blueWidthMultiplier = preset.blueWidthMultiplier
+        glowWidthMultiplier = preset.glowWidthMultiplier
         trailAlgorithm = preset.trailAlgorithm
         movementThreshold = preset.movementThreshold
         minimumVelocity = preset.minimumVelocity
-        redFadeTime = preset.redFadeTime
-        blueFadeTime = preset.blueFadeTime
-        redTrailR = preset.redTrailR
-        redTrailG = preset.redTrailG
-        redTrailB = preset.redTrailB
-        blueTrailR = preset.blueTrailR
-        blueTrailG = preset.blueTrailG
-        blueTrailB = preset.blueTrailB
-        blueOuterOpacity = preset.blueOuterOpacity
-        blueMiddleOpacity = preset.blueMiddleOpacity
+        coreFadeTime = preset.coreFadeTime
+        glowFadeTime = preset.glowFadeTime
+        coreTrailR = preset.coreTrailR
+        coreTrailG = preset.coreTrailG
+        coreTrailB = preset.coreTrailB
+        glowTrailR = preset.glowTrailR
+        glowTrailG = preset.glowTrailG
+        glowTrailB = preset.glowTrailB
+        glowOuterOpacity = preset.glowOuterOpacity
+        glowMiddleOpacity = preset.glowMiddleOpacity
         isSuppressingCallbacks = false
         save()
         onChanged?()
@@ -198,20 +198,20 @@ class TrailSettings {
     func resetToDefaults() {
         isSuppressingCallbacks = true
         maxWidth = 8.0
-        blueWidthMultiplier = 3.5
+        glowWidthMultiplier = 3.5
         trailAlgorithm = .smooth
         movementThreshold = 30.0
         minimumVelocity = 0.0
-        redFadeTime = 0.6
-        blueFadeTime = 0.35
-        blueOuterOpacity = 0.02
-        blueMiddleOpacity = 0.08
-        redTrailR = 1.0
-        redTrailG = 0.15
-        redTrailB = 0.1
-        blueTrailR = 0.1
-        blueTrailG = 0.5
-        blueTrailB = 1.0
+        coreFadeTime = 0.6
+        glowFadeTime = 0.35
+        glowOuterOpacity = 0.02
+        glowMiddleOpacity = 0.08
+        coreTrailR = 1.0
+        coreTrailG = 0.15
+        coreTrailB = 0.1
+        glowTrailR = 0.1
+        glowTrailG = 0.5
+        glowTrailB = 1.0
         isTrailVisible = true
         isRippleEnabled = false
         isSuppressingCallbacks = false
