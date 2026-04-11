@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-10 23:23:06"
+let BUILD_TIMESTAMP = "2026-04-11 00:20:41"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -46,6 +46,61 @@ struct SpringCursorState {
     var timestamp: TimeInterval
 }
 
+struct PerformanceExperimentConfig {
+    let reduceSyntheticSampleRate: Bool
+    let enableSmoothInputCoalescing: Bool
+    let useReducedLayerStack: Bool
+    let onlyUpdateDirtyScreens: Bool
+    let useLinearSmoothPlaybackLookup: Bool
+    let useStrongerPointDecimation: Bool
+    let useRelaxedPathRebuild: Bool
+    let capTrailRenderingTo60FPS: Bool
+
+    init(settings: TrailSettings) {
+        reduceSyntheticSampleRate = settings.reduceSyntheticSampleRate
+        enableSmoothInputCoalescing = settings.enableSmoothInputCoalescing
+        useReducedLayerStack = settings.useReducedLayerStack
+        onlyUpdateDirtyScreens = settings.onlyUpdateDirtyScreens
+        useLinearSmoothPlaybackLookup = settings.useLinearSmoothPlaybackLookup
+        useStrongerPointDecimation = settings.useStrongerPointDecimation
+        useRelaxedPathRebuild = settings.useRelaxedPathRebuild
+        capTrailRenderingTo60FPS = settings.capTrailRenderingTo60FPS
+    }
+
+    func mouseCoalescingEnabled(for algorithm: TrailAlgorithm) -> Bool {
+        switch algorithm {
+        case .spring:
+            return true
+        case .smooth:
+            return enableSmoothInputCoalescing
+        }
+    }
+
+    var syntheticSampleInterval: TimeInterval {
+        reduceSyntheticSampleRate ? (1.0 / 120.0) : (1.0 / 240.0)
+    }
+
+    var trailMinimumPointDistance: CGFloat {
+        useStrongerPointDecimation ? 1.5 : 0.5
+    }
+
+    var trailMaximumRenderSegmentLength: CGFloat {
+        useRelaxedPathRebuild ? 10.0 : 6.0
+    }
+
+    var trailRenderSmoothingPasses: Int {
+        useRelaxedPathRebuild ? 1 : 2
+    }
+
+    var trailMaxPoints: Int {
+        useRelaxedPathRebuild ? 120 : 180
+    }
+
+    var trailRenderMinimumInterval: TimeInterval {
+        capTrailRenderingTo60FPS ? (1.0 / 60.0) : 0
+    }
+}
+
 /**
  * TrailView - Hardware-accelerated view that renders a smooth mouse trail
  * 
@@ -54,11 +109,11 @@ struct SpringCursorState {
  */
 class TrailView: NSView {
     /// Maximum number of points to keep in trail
-    let maxPoints = 180
+    var maxPoints = 180
     let fullWidthPointCount: CGFloat = 40
-    let minimumPointDistance: CGFloat = 0.5
-    let maximumRenderSegmentLength: CGFloat = 6.0
-    let renderSmoothingPasses = 2
+    var minimumPointDistance: CGFloat = 0.5
+    var maximumRenderSegmentLength: CGFloat = 6.0
+    var renderSmoothingPasses = 2
     let interpolationAlpha: CGFloat = 0.5
     
     /// Fade time in seconds for core trail
@@ -86,6 +141,12 @@ class TrailView: NSView {
     
     /// Points in the trail
     private var points: [TrailPoint] = []
+
+    var usesReducedLayerStack = false {
+        didSet {
+            updateLayerVisibility()
+        }
+    }
     
     /// Movement threshold tracking
     private var startPosition: NSPoint?
@@ -105,6 +166,14 @@ class TrailView: NSView {
     private var glowOuterLayer: CAShapeLayer!
     private var glowMiddleLayer: CAShapeLayer!
     private var glowInnerLayer: CAShapeLayer!
+
+    private var activeCoreLayers: [CAShapeLayer] {
+        usesReducedLayerStack ? [coreMiddleLayer, coreInnerLayer] : [coreOuterLayer, coreMiddleLayer, coreInnerLayer]
+    }
+
+    private var activeGlowLayers: [CAShapeLayer] {
+        usesReducedLayerStack ? [glowMiddleLayer, glowInnerLayer] : [glowOuterLayer, glowMiddleLayer, glowInnerLayer]
+    }
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -243,6 +312,7 @@ class TrailView: NSView {
         gradientMaskLayer.locations = [0, 0.3, 0.7, 1]
         
         layer?.addSublayer(trailContainer)
+        updateLayerVisibility()
     }
     
     override func viewDidMoveToWindow() {
@@ -449,6 +519,15 @@ class TrailView: NSView {
         CATransaction.commit()
     }
 
+    private func updateLayerVisibility() {
+        coreOuterLayer?.isHidden = usesReducedLayerStack
+        glowOuterLayer?.isHidden = usesReducedLayerStack
+
+        if usesReducedLayerStack {
+            clearTrailLayers([coreOuterLayer, glowOuterLayer].compactMap { $0 })
+        }
+    }
+
     func resetTrail() {
         points.removeAll()
         startPosition = nil
@@ -459,22 +538,16 @@ class TrailView: NSView {
     }
 
     private func applyLineWidths(for trailPoints: [TrailPoint], to layers: [CAShapeLayer], isBlue: Bool) {
-        let widthMultiplier = isBlue ? glowWidthMultiplier : 1.0
-
-        guard layers.count >= 3 else { return }
-
-        if isBlue {
-            layers[0].lineWidth = maxWidth * 3.0 * widthMultiplier
-            layers[1].lineWidth = maxWidth * 1.8 * widthMultiplier
-            layers[2].lineWidth = maxWidth * 0.3 * widthMultiplier
-            return
-        }
-
         let progress = min(CGFloat(trailPoints.count) / fullWidthPointCount, 1.0)
         let trailWidth = baseWidth + (maxWidth - baseWidth) * progress
-        layers[0].lineWidth = trailWidth * 3.0
-        layers[1].lineWidth = trailWidth * 1.8
-        layers[2].lineWidth = trailWidth * 0.3
+        let widthMultiplier = isBlue ? glowWidthMultiplier : 1.0
+        let widthFactors: [CGFloat] = (layers.count >= 3) ? [3.0, 1.8, 0.3] : [1.8, 0.3]
+
+        guard layers.count == widthFactors.count else { return }
+
+        for (layer, factor) in zip(layers, widthFactors) {
+            layer.lineWidth = trailWidth * factor * widthMultiplier
+        }
     }
 
     private func shadowPath(for path: CGPath, lineWidth: CGFloat) -> CGPath {
@@ -609,11 +682,11 @@ class TrailView: NSView {
         }
 
         // Build core trail
-        buildTrailPath(for: points, layers: [coreOuterLayer, coreMiddleLayer, coreInnerLayer])
+        buildTrailPath(for: points, layers: activeCoreLayers)
 
         // Build glow trail with shorter fade
         let bluePoints = points.filter { now - $0.timestamp <= glowFadeTime }
-        buildTrailPath(for: bluePoints, layers: [glowOuterLayer, glowMiddleLayer, glowInnerLayer], isBlue: true)
+        buildTrailPath(for: bluePoints, layers: activeGlowLayers, isBlue: true)
     }
     
     /// Build trail path for given points and layers
@@ -1501,6 +1574,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Raw cursor samples used for delayed, spline-based trail playback.
     var rawMouseSamples: [MouseSample] = []
 
+    /// Monotonic search cursor for the linear smooth-playback experiment.
+    var smoothPlaybackSearchIndex = 0
+
     /// Playback cursor position in the raw-sample timeline.
     var visualPlaybackTime: TimeInterval?
 
@@ -1527,6 +1603,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var pendingMouseSamples: [MouseSample] = []
     let maxPendingMouseSamples = 256
 
+    /// Trail views that received content recently and still need rendering.
+    var dirtyTrailViewIndices: Set<Int> = []
+
+    /// Timestamp of the last trail path rebuild.
+    var lastTrailRenderTime: TimeInterval = 0
+
+    private var performanceExperimentConfig: PerformanceExperimentConfig {
+        PerformanceExperimentConfig(settings: settings)
+    }
+
     private func ensureRippleManager() -> RippleManager {
         if let rippleManager {
             return rippleManager
@@ -1548,9 +1634,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyCurrentTrailConfiguration(to trailView: TrailView) {
+        let experiments = performanceExperimentConfig
         trailView.maxWidth = CGFloat(settings.maxWidth)
         trailView.movementThreshold = CGFloat(settings.movementThreshold)
         trailView.minimumVelocity = CGFloat(settings.minimumVelocity)
+        trailView.maxPoints = experiments.trailMaxPoints
+        trailView.minimumPointDistance = experiments.trailMinimumPointDistance
+        trailView.maximumRenderSegmentLength = experiments.trailMaximumRenderSegmentLength
+        trailView.renderSmoothingPasses = experiments.trailRenderSmoothingPasses
         trailView.glowWidthMultiplier = CGFloat(settings.glowWidthMultiplier)
         trailView.glowOuterOpacity = CGFloat(settings.glowOuterOpacity)
         trailView.glowMiddleOpacity = CGFloat(settings.glowMiddleOpacity)
@@ -1558,11 +1649,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         trailView.glowFadeTime = settings.glowFadeTime
         trailView.coreColor = settings.coreTrailNSColor
         trailView.glowColor = settings.glowTrailNSColor
+        trailView.usesReducedLayerStack = experiments.useReducedLayerStack
         trailView.updateLayerProperties()
     }
 
     private func handleTrailSettingsChanged() {
         applySettingsToTrailViews()
+        smoothPlaybackSearchIndex = 0
+        markVisibleTrailViewsDirty(at: currentMonotonicTime())
 
         if activeTrailAlgorithm != settings.trailAlgorithm {
             synchronizeTrailRuntime(clearTrail: true)
@@ -1572,7 +1666,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateMouseCoalescingMode(for algorithm: TrailAlgorithm) {
-        NSEvent.isMouseCoalescingEnabled = (algorithm == .spring)
+        NSEvent.isMouseCoalescingEnabled = performanceExperimentConfig.mouseCoalescingEnabled(for: algorithm)
     }
 
     private func resetTrailRuntimeState(
@@ -1583,7 +1677,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pendingMouseSamples.removeAll(keepingCapacity: true)
         springCursorState = nil
         rawMouseSamples.removeAll()
+        smoothPlaybackSearchIndex = 0
         visualPlaybackTime = nil
+        dirtyTrailViewIndices.removeAll()
+        lastTrailRenderTime = 0
         activeTrailAlgorithm = algorithm
         updateMouseCoalescingMode(for: algorithm)
 
@@ -1591,6 +1688,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             for trailView in trailViews {
                 trailView.resetTrail()
             }
+        } else {
+            markVisibleTrailViewsDirty(at: timestamp)
         }
 
         switch algorithm {
@@ -1598,6 +1697,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             resetSpringTrail(to: latestMouseLocation, timestamp: timestamp)
         case .smooth:
             resetVisualPlayback(to: latestMouseLocation, timestamp: timestamp)
+        }
+    }
+
+    private func markVisibleTrailViewsDirty(at now: TimeInterval = currentMonotonicTime()) {
+        for (index, trailView) in trailViews.enumerated() where trailView.hasVisiblePoints(at: now) {
+            dirtyTrailViewIndices.insert(index)
         }
     }
 
@@ -1684,7 +1789,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let stepCount = max(1, Int(ceil(deltaTime / springCursorMaxStep)))
+        let maxStep = min(springCursorMaxStep, performanceExperimentConfig.syntheticSampleInterval)
+        let stepCount = max(1, Int(ceil(deltaTime / maxStep)))
         let stepDuration = deltaTime / Double(stepCount)
 
         for _ in 0..<stepCount {
@@ -1725,6 +1831,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func resetVisualPlayback(to location: NSPoint, timestamp: TimeInterval) {
         rawMouseSamples = [MouseSample(location: location, timestamp: timestamp)]
+        smoothPlaybackSearchIndex = 0
         visualPlaybackTime = timestamp
     }
 
@@ -1756,34 +1863,76 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return lastSample.location
         }
 
-        for index in 0..<(rawMouseSamples.count - 1) {
-            let startSample = rawMouseSamples[index]
-            let endSample = rawMouseSamples[index + 1]
+        if performanceExperimentConfig.useLinearSmoothPlaybackLookup {
+            let upperBound = rawMouseSamples.count - 1
+            smoothPlaybackSearchIndex = min(smoothPlaybackSearchIndex, max(upperBound - 1, 0))
 
-            guard playbackTime >= startSample.timestamp, playbackTime <= endSample.timestamp else {
-                continue
+            while smoothPlaybackSearchIndex > 0,
+                  playbackTime < rawMouseSamples[smoothPlaybackSearchIndex].timestamp {
+                smoothPlaybackSearchIndex -= 1
             }
 
-            let duration = max(endSample.timestamp - startSample.timestamp, 0.0001)
-            let t = CGFloat((playbackTime - startSample.timestamp) / duration)
-            let p1 = startSample.location
-            let p2 = endSample.location
-            let p0 = index > 0
-                ? rawMouseSamples[index - 1].location
-                : extrapolatedEndpoint(from: p1, toward: p2)
-            let p3 = (index + 2 < rawMouseSamples.count)
-                ? rawMouseSamples[index + 2].location
-                : extrapolatedEndpoint(from: p2, toward: p1)
+            while smoothPlaybackSearchIndex < upperBound - 1,
+                  playbackTime > rawMouseSamples[smoothPlaybackSearchIndex + 1].timestamp {
+                smoothPlaybackSearchIndex += 1
+            }
 
-            return uniformCatmullRomPoint(p0, p1, p2, p3, t: t)
+            return interpolatedRawMouseLocation(
+                at: playbackTime,
+                segmentIndex: smoothPlaybackSearchIndex
+            )
+        }
+
+        for index in 0..<(rawMouseSamples.count - 1) {
+            if let location = interpolatedRawMouseLocation(at: playbackTime, segmentIndex: index) {
+                return location
+            }
         }
 
         return lastSample.location
     }
 
+    private func interpolatedRawMouseLocation(at playbackTime: TimeInterval, segmentIndex index: Int) -> NSPoint? {
+        guard index >= 0, index + 1 < rawMouseSamples.count else { return nil }
+
+        let startSample = rawMouseSamples[index]
+        let endSample = rawMouseSamples[index + 1]
+
+        guard playbackTime >= startSample.timestamp, playbackTime <= endSample.timestamp else {
+            return nil
+        }
+
+        let duration = max(endSample.timestamp - startSample.timestamp, 0.0001)
+        let t = CGFloat((playbackTime - startSample.timestamp) / duration)
+        let p1 = startSample.location
+        let p2 = endSample.location
+        let p0 = index > 0
+            ? rawMouseSamples[index - 1].location
+            : extrapolatedEndpoint(from: p1, toward: p2)
+        let p3 = (index + 2 < rawMouseSamples.count)
+            ? rawMouseSamples[index + 2].location
+            : extrapolatedEndpoint(from: p2, toward: p1)
+
+        return uniformCatmullRomPoint(p0, p1, p2, p3, t: t)
+    }
+
     private func pruneRawMouseSamples(relativeTo now: TimeInterval) {
         let cutoff = now - rawMouseSampleHistoryDuration
         guard rawMouseSamples.count > 2 else { return }
+
+        if performanceExperimentConfig.useLinearSmoothPlaybackLookup {
+            var pruneCount = 0
+            while pruneCount + 1 < rawMouseSamples.count,
+                  rawMouseSamples[pruneCount + 1].timestamp < cutoff {
+                pruneCount += 1
+            }
+
+            if pruneCount > 0 {
+                rawMouseSamples.removeFirst(pruneCount)
+                smoothPlaybackSearchIndex = max(0, smoothPlaybackSearchIndex - pruneCount)
+            }
+            return
+        }
 
         while rawMouseSamples.count > 2 && rawMouseSamples[1].timestamp < cutoff {
             rawMouseSamples.removeFirst()
@@ -1804,9 +1953,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let sampleInterval = performanceExperimentConfig.syntheticSampleInterval
         var playbackTime = startPlaybackTime
         while playbackTime < playbackEnd {
-            playbackTime = min(playbackTime + visualPlaybackSampleInterval, playbackEnd)
+            playbackTime = min(playbackTime + sampleInterval, playbackEnd)
 
             if let location = interpolatedRawMouseLocation(at: playbackTime) {
                 updateTrailPosition(at: location, timestamp: playbackTime + visualPlaybackDelay)
@@ -1843,6 +1993,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateTrailAnimation(at now: TimeInterval) {
+        let experiments = performanceExperimentConfig
+        let minimumRenderInterval = experiments.trailRenderMinimumInterval
+        if minimumRenderInterval > 0,
+           lastTrailRenderTime > 0,
+           now - lastTrailRenderTime < minimumRenderInterval {
+            return
+        }
+
+        lastTrailRenderTime = now
+
+        if experiments.onlyUpdateDirtyScreens {
+            if dirtyTrailViewIndices.isEmpty {
+                markVisibleTrailViewsDirty(at: now)
+            }
+
+            var nextDirtyIndices: Set<Int> = []
+            let validIndices = dirtyTrailViewIndices.sorted().filter { $0 < trailViews.count }
+
+            for index in validIndices {
+                let trailView = trailViews[index]
+                trailView.updateTrail(at: now)
+                if trailView.hasVisiblePoints(at: now) {
+                    nextDirtyIndices.insert(index)
+                }
+            }
+
+            dirtyTrailViewIndices = nextDirtyIndices
+            return
+        }
+
         for trailView in trailViews {
             trailView.updateTrail(at: now)
         }
@@ -2201,6 +2381,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         displayLink?.invalidate()
         displayLink = nil
+        lastTrailRenderTime = 0
     }
     
     /**
@@ -2230,8 +2411,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         motionState = .idle
         springCursorState = nil
         rawMouseSamples.removeAll()
+        smoothPlaybackSearchIndex = 0
         visualPlaybackTime = nil
         pendingMouseSamples.removeAll(keepingCapacity: true)
+        dirtyTrailViewIndices.removeAll()
         
         // Stop the animation driver to save CPU
         stopAnimationDriver()
@@ -2286,17 +2469,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Apply current settings to all TrailView instances
     func applySettingsToTrailViews() {
         for trailView in trailViews {
-            trailView.maxWidth = CGFloat(settings.maxWidth)
-            trailView.movementThreshold = CGFloat(settings.movementThreshold)
-            trailView.minimumVelocity = CGFloat(settings.minimumVelocity)
-            trailView.glowWidthMultiplier = CGFloat(settings.glowWidthMultiplier)
-            trailView.glowOuterOpacity = CGFloat(settings.glowOuterOpacity)
-            trailView.glowMiddleOpacity = CGFloat(settings.glowMiddleOpacity)
-            trailView.fadeTime = settings.coreFadeTime
-            trailView.glowFadeTime = settings.glowFadeTime
-            trailView.coreColor = settings.coreTrailNSColor
-            trailView.glowColor = settings.glowTrailNSColor
-            trailView.updateLayerProperties()
+            applyCurrentTrailConfiguration(to: trailView)
         }
     }
 
@@ -2341,6 +2514,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         trailWindows.removeAll()
         trailViews.removeAll()
+        dirtyTrailViewIndices.removeAll()
         
         // Create a window for each screen
         for screen in NSScreen.screens {
@@ -2397,8 +2571,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      * This adds the current mouse position to the trail view that owns the point.
      */
     func updateTrailPosition(at screenLocation: NSPoint, timestamp: TimeInterval) {
-        for trailView in trailViews {
+        for (index, trailView) in trailViews.enumerated() {
             if trailView.addPoint(screenLocation, at: timestamp) {
+                dirtyTrailViewIndices.insert(index)
                 break
             }
         }

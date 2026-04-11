@@ -128,6 +128,70 @@ struct MenuBarSettingsView: View {
 
                 Divider()
 
+                // MARK: - Performance Experiments
+                DisclosureGroup("Performance Experiments") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Toggle one experiment at a time to compare CPU cost against visual impact.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        PerformanceExperimentToggle(
+                            "Reduce synthetic sample rate",
+                            description: "Drop synthetic trail emission from 240 Hz to 120 Hz.",
+                            isOn: $settings.reduceSyntheticSampleRate
+                        )
+                        PerformanceExperimentToggle(
+                            "Enable smooth input coalescing",
+                            description: "Keep coalesced mouse events on in smooth mode.",
+                            isOn: $settings.enableSmoothInputCoalescing
+                        )
+                        PerformanceExperimentToggle(
+                            "Use reduced layer stack",
+                            description: "Skip the outer glow layers and render a cheaper trail stack.",
+                            isOn: $settings.useReducedLayerStack
+                        )
+                        PerformanceExperimentToggle(
+                            "Only update dirty screens",
+                            description: "Render only screens that still have active trail content.",
+                            isOn: $settings.onlyUpdateDirtyScreens
+                        )
+                        PerformanceExperimentToggle(
+                            "Use linear smooth playback lookup",
+                            description: "Avoid rescanning the raw sample array from the beginning.",
+                            isOn: $settings.useLinearSmoothPlaybackLookup
+                        )
+                        PerformanceExperimentToggle(
+                            "Use stronger point decimation",
+                            description: "Accept fewer points before rebuilding the path.",
+                            isOn: $settings.useStrongerPointDecimation
+                        )
+                        PerformanceExperimentToggle(
+                            "Use relaxed path rebuild",
+                            description: "Use fewer points and lighter smoothing when fitting the trail path.",
+                            isOn: $settings.useRelaxedPathRebuild
+                        )
+                        PerformanceExperimentToggle(
+                            "Cap trail rendering to 60 FPS",
+                            description: "Throttle path rebuilds while leaving input processing live.",
+                            isOn: $settings.capTrailRenderingTo60FPS
+                        )
+
+                        HStack {
+                            Button("All Off") {
+                                settings.setAllPerformanceExperiments(enabled: false)
+                            }
+                            Button("All On") {
+                                settings.setAllPerformanceExperiments(enabled: true)
+                            }
+                            Spacer()
+                        }
+                        .controlSize(.small)
+                    }
+                    .padding(.top, 4)
+                }
+
+                Divider()
+
                 // MARK: - Debug Log
                 DisclosureGroup("Debug Log", isExpanded: $debugLogExpanded) {
                     ScrollView {
@@ -416,6 +480,28 @@ private struct SettingsSlider: View {
                     .foregroundStyle(.secondary)
             }
             Slider(value: $value, in: range)
+        }
+    }
+}
+
+private struct PerformanceExperimentToggle: View {
+    let title: String
+    let description: String
+    @Binding var isOn: Bool
+
+    init(_ title: String, description: String, isOn: Binding<Bool>) {
+        self.title = title
+        self.description = description
+        self._isOn = isOn
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle(title, isOn: $isOn)
+            Text(description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

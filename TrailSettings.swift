@@ -73,6 +73,17 @@ class TrailSettings {
     var rippleDuration = 1.2 { didSet { save(); onChanged?() } }
     var rippleSpecularIntensity = 0.8 { didSet { save(); onChanged?() } }
 
+    // MARK: - Performance Experiments
+
+    var reduceSyntheticSampleRate = false { didSet { save(); onChanged?() } }
+    var enableSmoothInputCoalescing = false { didSet { save(); onChanged?() } }
+    var useReducedLayerStack = false { didSet { save(); onChanged?() } }
+    var onlyUpdateDirtyScreens = false { didSet { save(); onChanged?() } }
+    var useLinearSmoothPlaybackLookup = false { didSet { save(); onChanged?() } }
+    var useStrongerPointDecimation = false { didSet { save(); onChanged?() } }
+    var useRelaxedPathRebuild = false { didSet { save(); onChanged?() } }
+    var capTrailRenderingTo60FPS = false { didSet { save(); onChanged?() } }
+
     // MARK: - Computed Colors
 
     var coreTrailColor: Color {
@@ -130,6 +141,14 @@ class TrailSettings {
         static let rippleAmplitude = "ripple.amplitude"
         static let rippleDuration = "ripple.duration"
         static let rippleSpecularIntensity = "ripple.specularIntensity"
+        static let reduceSyntheticSampleRate = "performance.reduceSyntheticSampleRate"
+        static let enableSmoothInputCoalescing = "performance.enableSmoothInputCoalescing"
+        static let useReducedLayerStack = "performance.useReducedLayerStack"
+        static let onlyUpdateDirtyScreens = "performance.onlyUpdateDirtyScreens"
+        static let useLinearSmoothPlaybackLookup = "performance.useLinearSmoothPlaybackLookup"
+        static let useStrongerPointDecimation = "performance.useStrongerPointDecimation"
+        static let useRelaxedPathRebuild = "performance.useRelaxedPathRebuild"
+        static let capTrailRenderingTo60FPS = "performance.capTrailRenderingTo60FPS"
     }
 
     private var isSuppressingCallbacks = false
@@ -161,6 +180,14 @@ class TrailSettings {
         d.set(rippleAmplitude, forKey: Keys.rippleAmplitude)
         d.set(rippleDuration, forKey: Keys.rippleDuration)
         d.set(rippleSpecularIntensity, forKey: Keys.rippleSpecularIntensity)
+        d.set(reduceSyntheticSampleRate, forKey: Keys.reduceSyntheticSampleRate)
+        d.set(enableSmoothInputCoalescing, forKey: Keys.enableSmoothInputCoalescing)
+        d.set(useReducedLayerStack, forKey: Keys.useReducedLayerStack)
+        d.set(onlyUpdateDirtyScreens, forKey: Keys.onlyUpdateDirtyScreens)
+        d.set(useLinearSmoothPlaybackLookup, forKey: Keys.useLinearSmoothPlaybackLookup)
+        d.set(useStrongerPointDecimation, forKey: Keys.useStrongerPointDecimation)
+        d.set(useRelaxedPathRebuild, forKey: Keys.useRelaxedPathRebuild)
+        d.set(capTrailRenderingTo60FPS, forKey: Keys.capTrailRenderingTo60FPS)
     }
 
     func restore() {
@@ -199,6 +226,14 @@ class TrailSettings {
         if d.object(forKey: Keys.rippleAmplitude) != nil { rippleAmplitude = d.double(forKey: Keys.rippleAmplitude) }
         if d.object(forKey: Keys.rippleDuration) != nil { rippleDuration = d.double(forKey: Keys.rippleDuration) }
         if d.object(forKey: Keys.rippleSpecularIntensity) != nil { rippleSpecularIntensity = d.double(forKey: Keys.rippleSpecularIntensity) }
+        if d.object(forKey: Keys.reduceSyntheticSampleRate) != nil { reduceSyntheticSampleRate = d.bool(forKey: Keys.reduceSyntheticSampleRate) }
+        if d.object(forKey: Keys.enableSmoothInputCoalescing) != nil { enableSmoothInputCoalescing = d.bool(forKey: Keys.enableSmoothInputCoalescing) }
+        if d.object(forKey: Keys.useReducedLayerStack) != nil { useReducedLayerStack = d.bool(forKey: Keys.useReducedLayerStack) }
+        if d.object(forKey: Keys.onlyUpdateDirtyScreens) != nil { onlyUpdateDirtyScreens = d.bool(forKey: Keys.onlyUpdateDirtyScreens) }
+        if d.object(forKey: Keys.useLinearSmoothPlaybackLookup) != nil { useLinearSmoothPlaybackLookup = d.bool(forKey: Keys.useLinearSmoothPlaybackLookup) }
+        if d.object(forKey: Keys.useStrongerPointDecimation) != nil { useStrongerPointDecimation = d.bool(forKey: Keys.useStrongerPointDecimation) }
+        if d.object(forKey: Keys.useRelaxedPathRebuild) != nil { useRelaxedPathRebuild = d.bool(forKey: Keys.useRelaxedPathRebuild) }
+        if d.object(forKey: Keys.capTrailRenderingTo60FPS) != nil { capTrailRenderingTo60FPS = d.bool(forKey: Keys.capTrailRenderingTo60FPS) }
     }
 
     func apply(preset: TrailPreset) {
@@ -259,9 +294,32 @@ class TrailSettings {
         rippleAmplitude = 12.0
         rippleDuration = 1.2
         rippleSpecularIntensity = 0.8
+        reduceSyntheticSampleRate = false
+        enableSmoothInputCoalescing = false
+        useReducedLayerStack = false
+        onlyUpdateDirtyScreens = false
+        useLinearSmoothPlaybackLookup = false
+        useStrongerPointDecimation = false
+        useRelaxedPathRebuild = false
+        capTrailRenderingTo60FPS = false
         isSuppressingCallbacks = false
         save()
         onChanged?()
         onVisibilityChanged?()
+    }
+
+    func setAllPerformanceExperiments(enabled: Bool) {
+        isSuppressingCallbacks = true
+        reduceSyntheticSampleRate = enabled
+        enableSmoothInputCoalescing = enabled
+        useReducedLayerStack = enabled
+        onlyUpdateDirtyScreens = enabled
+        useLinearSmoothPlaybackLookup = enabled
+        useStrongerPointDecimation = enabled
+        useRelaxedPathRebuild = enabled
+        capTrailRenderingTo60FPS = enabled
+        isSuppressingCallbacks = false
+        save()
+        onChanged?()
     }
 }
