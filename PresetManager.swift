@@ -50,7 +50,14 @@ class PresetManager {
             glowTrailG: settings.glowTrailG,
             glowTrailB: settings.glowTrailB,
             glowOuterOpacity: settings.glowOuterOpacity,
-            glowMiddleOpacity: settings.glowMiddleOpacity
+            glowMiddleOpacity: settings.glowMiddleOpacity,
+            rippleRadius: settings.rippleRadius,
+            rippleSpeed: settings.rippleSpeed,
+            rippleWavelength: settings.rippleWavelength,
+            rippleDamping: settings.rippleDamping,
+            rippleAmplitude: settings.rippleAmplitude,
+            rippleDuration: settings.rippleDuration,
+            rippleSpecularIntensity: settings.rippleSpecularIntensity
         )
         presets[idx] = updated
         cleanSnapshot = TrailPreset(name: "", from: settings)

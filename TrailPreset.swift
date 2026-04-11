@@ -37,6 +37,15 @@ struct TrailPreset: Codable, Identifiable, Equatable {
     var glowOuterOpacity: Double
     var glowMiddleOpacity: Double
 
+    // Ripple Effect
+    var rippleRadius: Double
+    var rippleSpeed: Double
+    var rippleWavelength: Double
+    var rippleDamping: Double
+    var rippleAmplitude: Double
+    var rippleDuration: Double
+    var rippleSpecularIntensity: Double
+
     /// Compare only the setting values, ignoring id/name/dates.
     func settingsMatch(_ other: TrailPreset) -> Bool {
         isTrailVisible == other.isTrailVisible
@@ -56,6 +65,13 @@ struct TrailPreset: Codable, Identifiable, Equatable {
             && glowTrailB == other.glowTrailB
             && glowOuterOpacity == other.glowOuterOpacity
             && glowMiddleOpacity == other.glowMiddleOpacity
+            && rippleRadius == other.rippleRadius
+            && rippleSpeed == other.rippleSpeed
+            && rippleWavelength == other.rippleWavelength
+            && rippleDamping == other.rippleDamping
+            && rippleAmplitude == other.rippleAmplitude
+            && rippleDuration == other.rippleDuration
+            && rippleSpecularIntensity == other.rippleSpecularIntensity
     }
 }
 
@@ -82,6 +98,13 @@ extension TrailPreset {
         case glowTrailB
         case glowOuterOpacity
         case glowMiddleOpacity
+        case rippleRadius
+        case rippleSpeed
+        case rippleWavelength
+        case rippleDamping
+        case rippleAmplitude
+        case rippleDuration
+        case rippleSpecularIntensity
     }
 
     init(from decoder: Decoder) throws {
@@ -107,6 +130,13 @@ extension TrailPreset {
         glowTrailB = try container.decode(Double.self, forKey: .glowTrailB)
         glowOuterOpacity = try container.decode(Double.self, forKey: .glowOuterOpacity)
         glowMiddleOpacity = try container.decode(Double.self, forKey: .glowMiddleOpacity)
+        rippleRadius = try container.decodeIfPresent(Double.self, forKey: .rippleRadius) ?? 150.0
+        rippleSpeed = try container.decodeIfPresent(Double.self, forKey: .rippleSpeed) ?? 120.0
+        rippleWavelength = try container.decodeIfPresent(Double.self, forKey: .rippleWavelength) ?? 25.0
+        rippleDamping = try container.decodeIfPresent(Double.self, forKey: .rippleDamping) ?? 2.0
+        rippleAmplitude = try container.decodeIfPresent(Double.self, forKey: .rippleAmplitude) ?? 12.0
+        rippleDuration = try container.decodeIfPresent(Double.self, forKey: .rippleDuration) ?? 1.2
+        rippleSpecularIntensity = try container.decodeIfPresent(Double.self, forKey: .rippleSpecularIntensity) ?? 0.8
     }
 
     init(name: String, from settings: TrailSettings) {
@@ -131,5 +161,12 @@ extension TrailPreset {
         self.glowTrailB = settings.glowTrailB
         self.glowOuterOpacity = settings.glowOuterOpacity
         self.glowMiddleOpacity = settings.glowMiddleOpacity
+        self.rippleRadius = settings.rippleRadius
+        self.rippleSpeed = settings.rippleSpeed
+        self.rippleWavelength = settings.rippleWavelength
+        self.rippleDamping = settings.rippleDamping
+        self.rippleAmplitude = settings.rippleAmplitude
+        self.rippleDuration = settings.rippleDuration
+        self.rippleSpecularIntensity = settings.rippleSpecularIntensity
     }
 }

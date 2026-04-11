@@ -116,6 +116,18 @@ struct MenuBarSettingsView: View {
 
                 Divider()
 
+                // MARK: - Ripple Settings
+                SectionHeader("Ripple Effect")
+                SettingsSlider("Radius", value: $settings.rippleRadius, range: 50...400, format: "%.0f px")
+                SettingsSlider("Speed", value: $settings.rippleSpeed, range: 30...400, format: "%.0f px/s")
+                SettingsSlider("Wavelength", value: $settings.rippleWavelength, range: 5...80, format: "%.0f px")
+                SettingsSlider("Damping", value: $settings.rippleDamping, range: 0.5...6.0, format: "%.1f")
+                SettingsSlider("Amplitude", value: $settings.rippleAmplitude, range: 2...30, format: "%.0f px")
+                SettingsSlider("Duration", value: $settings.rippleDuration, range: 0.3...3.0, format: "%.1f s")
+                SettingsSlider("Specular", value: $settings.rippleSpecularIntensity, range: 0...2.0, format: "%.2f")
+
+                Divider()
+
                 // MARK: - Debug Log
                 DisclosureGroup("Debug Log", isExpanded: $debugLogExpanded) {
                     ScrollView {

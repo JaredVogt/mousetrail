@@ -13,6 +13,19 @@ sed -i '' "s/let BUILD_TIMESTAMP = \"[^\"]*\"/let BUILD_TIMESTAMP = \"$BUILD_TIM
 
 SWIFT_FLAGS=(-O -whole-module-optimization)
 
+# Compile Metal CIKernel for ripple effect
+METAL_SRC="RippleKernel.ci.metal"
+if [ -f "$METAL_SRC" ]; then
+    echo "Compiling Metal kernel..."
+    if xcrun metal -c -fcikernel "$METAL_SRC" -o /tmp/RippleKernel.air && \
+       xcrun metallib -cikernel /tmp/RippleKernel.air -o /tmp/RippleKernel.metallib; then
+        echo "✓ Metal kernel compiled"
+    else
+        echo "✗ Metal kernel compilation failed"
+        exit 1
+    fi
+fi
+
 # Compile the Swift file
 if swiftc "${SWIFT_FLAGS[@]}" *.swift -o MouseTrail; then
     echo "✓ Compilation successful"
@@ -64,7 +77,18 @@ else
 EOF
 fi
 
+# Copy Metal library to Resources
+if [ -f "/tmp/RippleKernel.metallib" ]; then
+    cp /tmp/RippleKernel.metallib MouseTrail.app/Contents/Resources/RippleKernel.metallib
+    echo "✓ Metal library bundled"
+fi
+
 echo "✓ App bundle created: MouseTrail.app"
+
+# Codesign the app bundle with a stable identity (so TCC permissions persist across rebuilds)
+SIGN_IDENTITY="Apple Development: jared@dca.io (6HZ3G86AKD)"
+codesign --force --deep --sign "$SIGN_IDENTITY" --entitlements entitlements.plist MouseTrail.app
+echo "✓ App signed with: $SIGN_IDENTITY"
 
 # Copy to Applications folder
 echo ""

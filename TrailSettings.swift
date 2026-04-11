@@ -63,6 +63,16 @@ class TrailSettings {
     var glowOuterOpacity = 0.02 { didSet { save(); onChanged?() } }
     var glowMiddleOpacity = 0.08 { didSet { save(); onChanged?() } }
 
+    // MARK: - Ripple Effect
+
+    var rippleRadius = 150.0 { didSet { save(); onChanged?() } }
+    var rippleSpeed = 120.0 { didSet { save(); onChanged?() } }
+    var rippleWavelength = 25.0 { didSet { save(); onChanged?() } }
+    var rippleDamping = 2.0 { didSet { save(); onChanged?() } }
+    var rippleAmplitude = 12.0 { didSet { save(); onChanged?() } }
+    var rippleDuration = 1.2 { didSet { save(); onChanged?() } }
+    var rippleSpecularIntensity = 0.8 { didSet { save(); onChanged?() } }
+
     // MARK: - Computed Colors
 
     var coreTrailColor: Color {
@@ -113,6 +123,13 @@ class TrailSettings {
         static let glowTrailB = "trail.glowTrailB"
         static let isTrailVisible = "trail.isTrailVisible"
         static let isRippleEnabled = "trail.isRippleEnabled"
+        static let rippleRadius = "ripple.radius"
+        static let rippleSpeed = "ripple.speed"
+        static let rippleWavelength = "ripple.wavelength"
+        static let rippleDamping = "ripple.damping"
+        static let rippleAmplitude = "ripple.amplitude"
+        static let rippleDuration = "ripple.duration"
+        static let rippleSpecularIntensity = "ripple.specularIntensity"
     }
 
     private var isSuppressingCallbacks = false
@@ -137,6 +154,13 @@ class TrailSettings {
         d.set(glowTrailB, forKey: Keys.glowTrailB)
         d.set(isTrailVisible, forKey: Keys.isTrailVisible)
         d.set(isRippleEnabled, forKey: Keys.isRippleEnabled)
+        d.set(rippleRadius, forKey: Keys.rippleRadius)
+        d.set(rippleSpeed, forKey: Keys.rippleSpeed)
+        d.set(rippleWavelength, forKey: Keys.rippleWavelength)
+        d.set(rippleDamping, forKey: Keys.rippleDamping)
+        d.set(rippleAmplitude, forKey: Keys.rippleAmplitude)
+        d.set(rippleDuration, forKey: Keys.rippleDuration)
+        d.set(rippleSpecularIntensity, forKey: Keys.rippleSpecularIntensity)
     }
 
     func restore() {
@@ -168,6 +192,13 @@ class TrailSettings {
         if d.object(forKey: Keys.glowTrailB) != nil { glowTrailB = d.double(forKey: Keys.glowTrailB) }
         if d.object(forKey: Keys.isTrailVisible) != nil { isTrailVisible = d.bool(forKey: Keys.isTrailVisible) }
         if d.object(forKey: Keys.isRippleEnabled) != nil { isRippleEnabled = d.bool(forKey: Keys.isRippleEnabled) }
+        if d.object(forKey: Keys.rippleRadius) != nil { rippleRadius = d.double(forKey: Keys.rippleRadius) }
+        if d.object(forKey: Keys.rippleSpeed) != nil { rippleSpeed = d.double(forKey: Keys.rippleSpeed) }
+        if d.object(forKey: Keys.rippleWavelength) != nil { rippleWavelength = d.double(forKey: Keys.rippleWavelength) }
+        if d.object(forKey: Keys.rippleDamping) != nil { rippleDamping = d.double(forKey: Keys.rippleDamping) }
+        if d.object(forKey: Keys.rippleAmplitude) != nil { rippleAmplitude = d.double(forKey: Keys.rippleAmplitude) }
+        if d.object(forKey: Keys.rippleDuration) != nil { rippleDuration = d.double(forKey: Keys.rippleDuration) }
+        if d.object(forKey: Keys.rippleSpecularIntensity) != nil { rippleSpecularIntensity = d.double(forKey: Keys.rippleSpecularIntensity) }
     }
 
     func apply(preset: TrailPreset) {
@@ -189,6 +220,13 @@ class TrailSettings {
         glowTrailB = preset.glowTrailB
         glowOuterOpacity = preset.glowOuterOpacity
         glowMiddleOpacity = preset.glowMiddleOpacity
+        rippleRadius = preset.rippleRadius
+        rippleSpeed = preset.rippleSpeed
+        rippleWavelength = preset.rippleWavelength
+        rippleDamping = preset.rippleDamping
+        rippleAmplitude = preset.rippleAmplitude
+        rippleDuration = preset.rippleDuration
+        rippleSpecularIntensity = preset.rippleSpecularIntensity
         isSuppressingCallbacks = false
         save()
         onChanged?()
@@ -214,6 +252,13 @@ class TrailSettings {
         glowTrailB = 1.0
         isTrailVisible = true
         isRippleEnabled = false
+        rippleRadius = 150.0
+        rippleSpeed = 120.0
+        rippleWavelength = 25.0
+        rippleDamping = 2.0
+        rippleAmplitude = 12.0
+        rippleDuration = 1.2
+        rippleSpecularIntensity = 0.8
         isSuppressingCallbacks = false
         save()
         onChanged?()

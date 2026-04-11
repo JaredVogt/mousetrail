@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-10 10:18:15"
+let BUILD_TIMESTAMP = "2026-04-10 22:57:38"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -669,43 +669,88 @@ class TrailView: NSView {
  * including screen capture, distortion animation, and window management.
  */
 class RippleEffect {
+    /// Shared CIKernel loaded from the bundled metallib
+    private static var _rippleKernel: CIKernel?
+    private static var _kernelLoadAttempted = false
+
+    static var rippleKernel: CIKernel? {
+        if !_kernelLoadAttempted {
+            _kernelLoadAttempted = true
+            var url = Bundle.main.url(forResource: "RippleKernel", withExtension: "metallib")
+            // Fallback: look in Resources relative to executable
+            if url == nil {
+                let execURL = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0])
+                let siblingURL = execURL.deletingLastPathComponent()
+                    .appendingPathComponent("../Resources/RippleKernel.metallib")
+                if FileManager.default.fileExists(atPath: siblingURL.path) {
+                    url = siblingURL
+                }
+            }
+            if let url = url, let data = try? Data(contentsOf: url) {
+                do {
+                    _rippleKernel = try CIKernel(functionName: "rippleDisplacement",
+                                                   fromMetalLibraryData: data)
+                    debugLog("Metal ripple kernel loaded successfully")
+                } catch {
+                    debugLog("Failed to create CIKernel from metallib: \(error)")
+                }
+            } else {
+                debugLog("RippleKernel.metallib not found in bundle")
+            }
+        }
+        return _rippleKernel
+    }
+
     /// Click location in screen coordinates
     let clickLocation: NSPoint
-    
+
     /// Captured screen content around click point
     let capturedImage: CGImage
-    
+
     /// Timestamp when ripple started
     let startTime: TimeInterval
-    
+
     /// Current animation radius (starts at 0, animates to max)
     var currentRadius: CGFloat = 0
-    
+
     /// Window displaying the ripple
     let window: NSPanel
-    
+
     /// Container view with circular mask
     let containerView: NSView
-    
+
     /// Image view showing distorted content
     let imageView: NSImageView
-    
+
     /// Core Image context for filtering
     let ciContext: CIContext
-    
+
     /// Maximum radius for the ripple
     let maxRadius: CGFloat
-    
-    /// Animation duration in seconds
-    let animationDuration: TimeInterval = 0.6
-    
-    init(at location: NSPoint, capturedImage: CGImage, maxRadius: CGFloat) {
+
+    /// Ripple parameters
+    let animationDuration: TimeInterval
+    let speed: CGFloat
+    let wavelength: CGFloat
+    let damping: CGFloat
+    let amplitude: CGFloat
+    let specularIntensity: CGFloat
+
+    init(at location: NSPoint, capturedImage: CGImage, maxRadius: CGFloat,
+         speed: CGFloat = 120, wavelength: CGFloat = 25, damping: CGFloat = 2.0,
+         amplitude: CGFloat = 12, duration: TimeInterval = 1.2, specularIntensity: CGFloat = 0.8) {
         debugLog("Creating RippleEffect at location: \(location)")
         self.clickLocation = location
         self.capturedImage = capturedImage
         self.startTime = Date().timeIntervalSince1970
         self.currentRadius = 0 // Start from center
         self.maxRadius = maxRadius
+        self.speed = speed
+        self.wavelength = wavelength
+        self.damping = damping
+        self.amplitude = amplitude
+        self.animationDuration = duration
+        self.specularIntensity = specularIntensity
         
         // Create Core Image context
         self.ciContext = CIContext(options: [
@@ -788,212 +833,69 @@ class RippleEffect {
     func update() -> Bool {
         let elapsed = Date().timeIntervalSince1970 - startTime
         let progress = min(elapsed / animationDuration, 1.0)
-        
+
         // Animation complete
         if progress >= 1.0 {
             return false
         }
-        
-        // Calculate current radius - starts at 0, expands to maxRadius
-        currentRadius = maxRadius * easeOutCubic(progress)
-        
-        // Calculate distortion intensity - starts high, decreases as ripple expands
-        let intensity = (1.0 - progress) * 0.8
-        
+
         // Calculate fade (starts at 0.6 progress)
         let fadeStart: CGFloat = 0.6
         let opacity = progress < fadeStart ? 1.0 : 1.0 - ((progress - fadeStart) / (1.0 - fadeStart))
-        
-        // Apply distortion filter
-        if let distortedImage = applyRippleDistortion(intensity: intensity, progress: progress) {
-            debugLog("[debug] Setting distorted image to imageView")
-            
-            // Debug: Check if the image view settings might be causing the issue
-            imageView.imageScaling = .scaleNone
-            imageView.alphaValue = 1.0
-            imageView.wantsLayer = true
-            imageView.layer?.backgroundColor = NSColor.clear.cgColor
-            
-            // Set the distorted image
+
+        // Always update fade regardless of distortion success
+        containerView.alphaValue = opacity
+
+        // Apply Metal shader distortion
+        if let distortedImage = applyRippleDistortion() {
             imageView.image = distortedImage
-            containerView.alphaValue = opacity
-            
-            debugLog("[debug] Image set with opacity: \(opacity)")
-        } else {
-            debugLog("[debug] No distorted image returned!")
-            // Try to show the original captured image as fallback
-            let fallbackImage = NSImage(cgImage: capturedImage, size: NSSize(width: capturedImage.width, height: capturedImage.height))
-            imageView.image = fallbackImage
-            containerView.alphaValue = opacity * 0.5 // Make it semi-transparent to debug
         }
-        
+
         return true
     }
     
-    /// Apply ripple distortion to captured image
-    private func applyRippleDistortion(intensity: CGFloat, progress: CGFloat) -> NSImage? {
+    /// Apply ripple distortion using Metal CIKernel
+    private func applyRippleDistortion() -> NSImage? {
+        guard let kernel = RippleEffect.rippleKernel else {
+            debugLog("Ripple kernel not available")
+            return nil
+        }
+
         let ciImage = CIImage(cgImage: capturedImage)
-        
-        debugLog("[debug] Applying ripple distortion - progress: \(progress), intensity: \(intensity)")
-        debugLog("[debug] Image extent: \(ciImage.extent)")
-        
-        // Calculate the center point in the captured image
-        let imageCenter = CGPoint(
-            x: ciImage.extent.width / 2,
-            y: ciImage.extent.height / 2
-        )
-        
-        // Create multiple waves
-        var distortedImage = ciImage
-        
-        // Number of waves and their properties
-        let waveCount = 4
-        let waveSpacing: CGFloat = 25.0 // Distance between wave peaks
-        let waveSpeed: CGFloat = 150.0 // Pixels per second
-        
-        // Apply multiple wave distortions
-        for waveIndex in 0..<waveCount {
-            let waveOffset = CGFloat(waveIndex) * waveSpacing
-            let waveRadius = (progress * waveSpeed) - waveOffset
-            
-            // Only process waves that are well within the visible bounds
-            // Stop waves at 80% of maxRadius to ensure edge is never exposed
-            let maxWaveRadius = maxRadius * 0.8
-            
-            if waveRadius > 0 && waveRadius < maxWaveRadius {
-                // Calculate wave intensity (decreases with distance)
-                // More aggressive fade-out as it approaches the edge
-                let waveProgress = waveRadius / maxWaveRadius
-                let fadeMultiplier = 1.0 - pow(waveProgress, 2.0) // Quadratic fade
-                let waveIntensity = intensity * fadeMultiplier * 0.5
-                
-                debugLog("[debug] Wave \(waveIndex): radius=\(waveRadius), intensity=\(waveIntensity)")
-                
-                // Create wave distortion using radial gradient distortion
-                if let waveDistortion = createWaveDistortion(
-                    image: distortedImage,
-                    center: imageCenter,
-                    radius: waveRadius,
-                    intensity: waveIntensity,
-                    waveIndex: waveIndex
-                ) {
-                    distortedImage = waveDistortion
-                }
-            }
-        }
-        
-        // Apply edge blending mask
-        guard let maskedImage = applyEdgeBlending(to: distortedImage, center: imageCenter) else {
-            debugLog("[debug] Failed to apply edge blending")
+        let imageCenter = CGPoint(x: ciImage.extent.width / 2, y: ciImage.extent.height / 2)
+        let elapsed = Date().timeIntervalSince1970 - startTime
+        let fadeRadius = maxRadius
+
+        guard let outputImage = kernel.apply(
+            extent: ciImage.extent,
+            roiCallback: { [amplitude] _, rect in
+                return rect.insetBy(dx: -amplitude, dy: -amplitude)
+            },
+            arguments: [
+                ciImage,
+                CIVector(x: imageCenter.x, y: imageCenter.y),
+                Float(elapsed),
+                Float(speed),
+                Float(wavelength),
+                Float(damping),
+                Float(amplitude),
+                Float(fadeRadius),
+                Float(specularIntensity)
+            ]
+        ) else {
+            debugLog("Kernel apply returned nil")
             return nil
         }
-        debugLog("[debug] Edge blending applied")
-        
-        // Skip emboss effect to avoid negative/inverted appearance
-        // Just use the masked image directly
-        let finalImage = maskedImage
-        debugLog("[debug] Skipping emboss effect to avoid inversion")
-        
-        // Create the final image at the correct size with proper color space
+
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let cgImage = ciContext.createCGImage(finalImage, from: ciImage.extent, format: .RGBA8, colorSpace: colorSpace) else {
-            debugLog("[debug] Failed to create CGImage from CIImage")
+        guard let cgImage = ciContext.createCGImage(outputImage, from: ciImage.extent,
+                                                     format: .RGBA8, colorSpace: colorSpace) else {
+            debugLog("Failed to create CGImage from kernel output")
             return nil
         }
-        
-        // Return image at actual size without any scaling
+
         let finalSize = NSSize(width: ciImage.extent.width, height: ciImage.extent.height)
-        debugLog("[debug] Created final image with size: \(finalSize)")
         return NSImage(cgImage: cgImage, size: finalSize)
-    }
-    
-    /// Create a single wave distortion
-    private func createWaveDistortion(image: CIImage, center: CGPoint, radius: CGFloat, intensity: CGFloat, waveIndex: Int) -> CIImage? {
-        // Create a more pronounced wave using displacement
-        
-        // First create a radial gradient for the wave
-        let gradientFilter = CIFilter(name: "CIRadialGradient")!
-        gradientFilter.setValue(CIVector(x: center.x, y: center.y), forKey: kCIInputCenterKey)
-        
-        // Create a ring by using two gradients
-        let innerRadius = max(0, radius - 15)
-        let outerRadius = radius + 15
-        
-        gradientFilter.setValue(innerRadius, forKey: "inputRadius0")
-        gradientFilter.setValue(outerRadius, forKey: "inputRadius1")
-        gradientFilter.setValue(CIColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 0), forKey: "inputColor0")
-        gradientFilter.setValue(CIColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1), forKey: "inputColor1")
-        
-        guard let gradientMask = gradientFilter.outputImage else {
-            return nil
-        }
-        
-        // Create displacement map using the gradient
-        let displacementFilter = CIFilter(name: "CIDisplacementDistortion")!
-        displacementFilter.setValue(image, forKey: kCIInputImageKey)
-        displacementFilter.setValue(gradientMask.cropped(to: image.extent), forKey: "inputDisplacementImage")
-        displacementFilter.setValue(intensity * 20.0, forKey: kCIInputScaleKey) // Increased scale for more visible effect
-        
-        return displacementFilter.outputImage
-    }
-    
-    /// Apply edge blending to create smooth edges
-    private func applyEdgeBlending(to image: CIImage, center: CGPoint) -> CIImage? {
-        // Create a radial gradient mask
-        let gradientFilter = CIFilter(name: "CIRadialGradient")!
-        gradientFilter.setValue(CIVector(x: center.x, y: center.y), forKey: kCIInputCenterKey)
-        gradientFilter.setValue(maxRadius * 0.5, forKey: "inputRadius0") // Inner radius (full opacity) - start fade earlier
-        gradientFilter.setValue(maxRadius * 0.9, forKey: "inputRadius1") // Outer radius (transparent) - complete fade before edge
-        gradientFilter.setValue(CIColor.white, forKey: "inputColor0")
-        gradientFilter.setValue(CIColor(red: 1, green: 1, blue: 1, alpha: 0), forKey: "inputColor1")
-        
-        guard let gradientMask = gradientFilter.outputImage else {
-            return nil
-        }
-        
-        // Apply the mask to the image using blend
-        let blendFilter = CIFilter(name: "CIBlendWithMask")!
-        blendFilter.setValue(image, forKey: kCIInputImageKey)
-        blendFilter.setValue(CIImage(color: CIColor.clear).cropped(to: image.extent), forKey: kCIInputBackgroundImageKey)
-        blendFilter.setValue(gradientMask.cropped(to: image.extent), forKey: kCIInputMaskImageKey)
-        
-        return blendFilter.outputImage
-    }
-    
-    /// Apply emboss effect for better visibility on solid backgrounds
-    private func applyEmbossEffect(to image: CIImage, intensity: CGFloat) -> CIImage? {
-        // Create emboss effect using convolution
-        let embossFilter = CIFilter(name: "CIConvolution3X3")!
-        embossFilter.setValue(image, forKey: kCIInputImageKey)
-        
-        // 3x3 convolution matrix for emboss effect
-        let weights: [CGFloat] = [
-            -2, -1,  0,
-            -1,  1,  1,
-             0,  1,  2
-        ]
-        embossFilter.setValue(CIVector(values: weights, count: 9), forKey: "inputWeights")
-        embossFilter.setValue(1.0, forKey: kCIInputBiasKey)
-        
-        guard let embossed = embossFilter.outputImage else {
-            return image
-        }
-        
-        // Blend embossed with original
-        let blendFilter = CIFilter(name: "CISourceOverCompositing")!
-        blendFilter.setValue(embossed, forKey: kCIInputImageKey)
-        blendFilter.setValue(image, forKey: kCIInputBackgroundImageKey)
-        
-        guard let blended = blendFilter.outputImage else {
-            return image
-        }
-        
-        // Adjust exposure for subtle highlight
-        let exposureFilter = CIFilter(name: "CIExposureAdjust")!
-        exposureFilter.setValue(blended, forKey: kCIInputImageKey)
-        exposureFilter.setValue(intensity * 0.3, forKey: kCIInputEVKey)
-        
-        return exposureFilter.outputImage ?? image
     }
     
     /// Ease-out cubic function for smooth animation
@@ -1058,6 +960,16 @@ class DebugLogger {
 func debugLog(_ message: String) {
     print("[debug] \(message)")  // Still print to console
     DebugLogger.shared.log(message)  // Also log to our debug window
+    // Also append to file for debugging when launched via `open`
+    let line = "[debug] \(message)\n"
+    let logPath = "/tmp/mousetrail.log"
+    if let handle = FileHandle(forWritingAtPath: logPath) {
+        handle.seekToEndOfFile()
+        handle.write(line.data(using: .utf8)!)
+        handle.closeFile()
+    } else {
+        FileManager.default.createFile(atPath: logPath, contents: line.data(using: .utf8))
+    }
 }
 
 /**
@@ -1069,10 +981,16 @@ func debugLog(_ message: String) {
 class RippleManager: NSObject {
     /// Active ripple effects
     var activeRipples: [RippleEffect] = []
-    
+
+    /// Called when a ripple is added so the animation driver can be restarted
+    var onRippleAdded: (() -> Void)?
+
+    /// Settings reference for ripple parameters
+    weak var settings: TrailSettings?
+
     /// Maximum concurrent ripples
     let maxRipples = 10
-    
+
     /// Has screen recording permission
     var hasPermission = false
     
@@ -1098,10 +1016,14 @@ class RippleManager: NSObject {
             } catch {
                 debugLog("Test capture failed: \(error)")
                 
-                // Check if it's a permission error
-                if error.localizedDescription.contains("not authorized") || 
-                   error.localizedDescription.contains("permission") ||
-                   error.localizedDescription.contains("denied") {
+                // Check if it's a permission error (SCStreamError code -3801 or keyword match)
+                let nsError = error as NSError
+                let isPermissionError = (nsError.code == -3801) ||
+                    error.localizedDescription.contains("not authorized") ||
+                    error.localizedDescription.contains("permission") ||
+                    error.localizedDescription.contains("denied") ||
+                    error.localizedDescription.contains("declined")
+                if isPermissionError {
                     debugLog("Screen recording permission not granted")
                     
                     // Request permission
@@ -1152,15 +1074,15 @@ class RippleManager: NSObject {
         
         debugLog("Minimum distance to edge: \(minDistanceToEdge)")
         
-        // Default sizes
-        let defaultMaxRadius: CGFloat = 150
-        let defaultCaptureRadius: CGFloat = 200
+        // Read radius from settings
+        let settingsRadius = CGFloat(settings?.rippleRadius ?? 150)
         let radiusBuffer: CGFloat = 50 // Capture should be this much larger than display
-        
+        let defaultCaptureRadius = settingsRadius + radiusBuffer
+
         // Adjust radii based on available space
         let maxRadius: CGFloat
         let captureRadius: CGFloat
-        
+
         if minDistanceToEdge < defaultCaptureRadius {
             // We're near an edge, need to adjust
             captureRadius = minDistanceToEdge - 5 // Leave 5px safety margin
@@ -1169,7 +1091,7 @@ class RippleManager: NSObject {
         } else {
             // Use default sizes
             captureRadius = defaultCaptureRadius
-            maxRadius = defaultMaxRadius
+            maxRadius = settingsRadius
         }
         
         // Don't create ripple if it would be too small
@@ -1197,6 +1119,14 @@ class RippleManager: NSObject {
         debugLog("Capture rect center (bottom-left): \(captureRectCenter)")
         debugLog("Capture rect: origin=(\(captureRect.origin.x), \(captureRect.origin.y)) size=(\(captureRect.width) x \(captureRect.height))")
         
+        // Snapshot settings at click time
+        let rippleSpeed = CGFloat(settings?.rippleSpeed ?? 120)
+        let rippleWavelength = CGFloat(settings?.rippleWavelength ?? 25)
+        let rippleDamping = CGFloat(settings?.rippleDamping ?? 2.0)
+        let rippleAmplitude = CGFloat(settings?.rippleAmplitude ?? 12)
+        let rippleDuration = settings?.rippleDuration ?? 1.2
+        let rippleSpecular = CGFloat(settings?.rippleSpecularIntensity ?? 0.8)
+
         // Capture asynchronously
         Task {
             do {
@@ -1205,29 +1135,37 @@ class RippleManager: NSObject {
                     debugLog("Failed to capture screen for ripple effect - no image returned")
                     return
                 }
-                
+
                 debugLog("Successfully captured screen area for ripple")
                 debugLog("[debug] Captured image size: \(capturedImage.width)x\(capturedImage.height)")
-                
+
                 // If we got here, we have permission
                 if !self.hasPermission {
                     debugLog("Capture succeeded - updating permission status")
                     self.hasPermission = true
                 }
-                
+
                 // Create and add ripple effect on main thread
                 await MainActor.run {
-                    let ripple = RippleEffect(at: location, capturedImage: capturedImage, maxRadius: maxRadius)
+                    let ripple = RippleEffect(
+                        at: location, capturedImage: capturedImage, maxRadius: maxRadius,
+                        speed: rippleSpeed, wavelength: rippleWavelength, damping: rippleDamping,
+                        amplitude: rippleAmplitude, duration: rippleDuration, specularIntensity: rippleSpecular)
                     self.activeRipples.append(ripple)
                     debugLog("Ripple created and added")
+                    self.onRippleAdded?()
                 }
             } catch {
                 debugLog("Error capturing screen: \(error)")
                 debugLog("Error details: \(error.localizedDescription)")
                 
-                // Update permission status based on error
-                if error.localizedDescription.contains("not authorized") || 
-                   error.localizedDescription.contains("permission") {
+                // Update permission status based on error (SCStreamError code -3801 or keyword match)
+                let nsError = error as NSError
+                let isPermissionError = (nsError.code == -3801) ||
+                    error.localizedDescription.contains("not authorized") ||
+                    error.localizedDescription.contains("permission") ||
+                    error.localizedDescription.contains("declined")
+                if isPermissionError {
                     self.hasPermission = false
                     debugLog("Permission denied based on error")
                 }
@@ -1235,7 +1173,7 @@ class RippleManager: NSObject {
         }
     }
     
-    /// Capture screen area using ScreenCaptureKit  
+    /// Capture screen area using ScreenCaptureKit
     private func captureScreenArea(rect: CGRect) async throws -> CGImage? {
         // Get shareable content
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -1367,6 +1305,7 @@ class RippleManager: NSObject {
         return image
     }
     
+
     /// Crop a CGImage to a specific rect
     private func cropImage(_ image: CGImage, to rect: CGRect) -> CGImage? {
         // Convert rect to image coordinates
@@ -1433,14 +1372,19 @@ class RippleManager: NSObject {
     
     /// Update all active ripples
     func updateRipples() {
+        let countBefore = activeRipples.count
         // Update each ripple and remove completed ones
         activeRipples.removeAll { ripple in
             let shouldContinue = ripple.update()
             if !shouldContinue {
+                debugLog("Ripple animation complete, cleaning up")
                 ripple.cleanup()
                 return true // Remove from array
             }
             return false
+        }
+        if countBefore > 0 && activeRipples.isEmpty {
+            debugLog("All ripples cleaned up")
         }
     }
     
@@ -1576,6 +1520,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let manager = RippleManager()
+        manager.settings = settings
+        manager.onRippleAdded = { [weak self] in
+            guard let self else { return }
+            // Restart animation driver if idle — the async capture may have
+            // finished after the idle timeout stopped the driver.
+            self.lastMouseMovement = currentMonotonicTime()
+            if self.motionState == .idle {
+                self.transitionToActiveState()
+            }
+        }
         rippleManager = manager
         return manager
     }
@@ -2083,14 +2037,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleMouseClick(_ event: NSEvent) {
         // Check if ripple is enabled
         guard isRippleEnabled else { return }
-        
+
         let clickLocation = NSEvent.mouseLocation
         debugLog("Mouse clicked at: \(clickLocation)")
-        
+
+        // Keep the animation driver alive while the async ripple capture runs
+        lastMouseMovement = currentMonotonicTime()
+
         // Pass the original bottom-left coordinates to createRipple
         // The ripple window uses NSWindow which expects bottom-left coordinates
         ensureRippleManager().createRipple(at: clickLocation)
-        
+
         // Ensure timer is running for ripple animation
         if motionState == .idle {
             transitionToActiveState()
@@ -2137,7 +2094,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setupDisplayLink() {
         stopAnimationDriver()
 
-        if #available(macOS 14.0, *), let displayWindow = trailWindows.first {
+        if #available(macOS 14.0, *), let displayWindow = trailWindows.first, displayWindow.isVisible {
             let link = displayWindow.displayLink(target: self, selector: #selector(handleDisplayLink(_:)))
             link.add(to: .main, forMode: .common)
             displayLink = link
@@ -2216,9 +2173,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateTrailAnimation(at: now)
 
         // Update ripple animations
+        let rippleCount = rippleManager?.activeRipples.count ?? 0
+        if rippleCount > 0 {
+            debugLog("Updating \(rippleCount) ripples, timeSinceLastMove=\(now - lastMouseMovement)")
+        }
         rippleManager?.updateRipples()
 
         if now - lastMouseMovement >= idleTimeout {
+            let hasRipples = !(rippleManager?.activeRipples.isEmpty ?? true)
+            debugLog("Idle timeout fired, hasRipples=\(hasRipples), motionState=\(motionState)")
             transitionToIdleState()
         }
     }
