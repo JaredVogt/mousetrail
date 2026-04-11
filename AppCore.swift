@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-10 22:57:38"
+let BUILD_TIMESTAMP = "2026-04-10 23:23:06"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -1466,9 +1466,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case idle
         case active
     }
-    
+
+    /// Click-drag classification state for left mouse button
+    enum ClickDragState {
+        case idle
+        case pendingClassification(downLocation: NSPoint, downTimestamp: TimeInterval)
+        case dragging
+    }
+
     /// Current motion state
     var motionState: MotionState = .idle
+
+    /// Current click-drag state (left button only)
+    var clickDragState: ClickDragState = .idle
+
+    /// Distance threshold (points) before classifying as drag
+    let clickDragDistanceThreshold: CGFloat = 5.0
 
     /// Currently active algorithm backing the trail runtime.
     var activeTrailAlgorithm: TrailAlgorithm?
@@ -1975,6 +1988,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) {
             eventMonitors.append(clickLocalMonitor)
         }
+
+        // Monitor left mouse up for click-drag classification
+        if let mouseUpMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: .leftMouseUp,
+            handler: { [weak self] event in
+                self?.handleMouseUp(event)
+            }
+        ) {
+            eventMonitors.append(mouseUpMonitor)
+        }
+        if let mouseUpLocalMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: .leftMouseUp,
+            handler: { [weak self] event in
+                self?.handleMouseUp(event)
+                return event
+            }
+        ) {
+            eventMonitors.append(mouseUpLocalMonitor)
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -2032,32 +2064,79 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     /**
-     * Handles mouse click events for ripple effect
+     * Handles left mouse down: begins click-drag classification.
+     * Ripple is deferred to mouseUp so drags don't trigger it.
      */
     func handleMouseClick(_ event: NSEvent) {
-        // Check if ripple is enabled
-        guard isRippleEnabled else { return }
+        let location = NSEvent.mouseLocation
+        let timestamp = currentMonotonicTime()
 
-        let clickLocation = NSEvent.mouseLocation
-        debugLog("Mouse clicked at: \(clickLocation)")
+        // Safety: if previous gesture wasn't cleaned up, reset
+        switch clickDragState {
+        case .idle: break
+        default: clickDragState = .idle
+        }
 
-        // Keep the animation driver alive while the async ripple capture runs
-        lastMouseMovement = currentMonotonicTime()
+        clickDragState = .pendingClassification(downLocation: location, downTimestamp: timestamp)
 
-        // Pass the original bottom-left coordinates to createRipple
-        // The ripple window uses NSWindow which expects bottom-left coordinates
-        ensureRippleManager().createRipple(at: clickLocation)
-
-        // Ensure timer is running for ripple animation
+        // Keep animation driver alive
+        lastMouseMovement = timestamp
         if motionState == .idle {
             transitionToActiveState()
         }
     }
-    
+
+    /**
+     * Handles left mouse up: fires ripple if it was a click, resets drag state.
+     */
+    func handleMouseUp(_ event: NSEvent) {
+        switch clickDragState {
+        case .pendingClassification(let downLocation, _):
+            // Still pending = never exceeded drag threshold = it was a click
+            if isRippleEnabled {
+                debugLog("Click detected (not drag), firing ripple at: \(downLocation)")
+                lastMouseMovement = currentMonotonicTime()
+                ensureRippleManager().createRipple(at: downLocation)
+                if motionState == .idle {
+                    transitionToActiveState()
+                }
+            }
+        case .dragging:
+            debugLog("Drag ended, no ripple")
+        case .idle:
+            break
+        }
+        clickDragState = .idle
+    }
+
     /**
      * Handles mouse movement events with motion detection
      */
     func handleMouseMovement(_ event: NSEvent) {
+        // Suppress trail during left-click drags
+        if event.type == .leftMouseDragged {
+            switch clickDragState {
+            case .pendingClassification(let downLocation, _):
+                let currentLocation = NSEvent.mouseLocation
+                let distance = pointDistance(currentLocation, downLocation)
+                if distance > clickDragDistanceThreshold {
+                    clickDragState = .dragging
+                    debugLog("Classified as drag (distance: \(distance))")
+                }
+                // Suppress trail during pending period for left-drag events
+                lastMouseMovement = event.timestamp
+                latestMouseLocation = NSEvent.mouseLocation
+                return
+            case .dragging:
+                // Keep animation driver alive but suppress trail
+                lastMouseMovement = event.timestamp
+                latestMouseLocation = NSEvent.mouseLocation
+                return
+            case .idle:
+                break
+            }
+        }
+
         let sample = MouseSample(location: NSEvent.mouseLocation, timestamp: event.timestamp)
         lastMouseMovement = sample.timestamp
         enqueueMouseSample(location: sample.location, timestamp: sample.timestamp)
