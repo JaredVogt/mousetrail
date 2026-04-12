@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-11 00:20:41"
+let BUILD_TIMESTAMP = "2026-04-12 16:14:10"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -2248,6 +2248,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      * Ripple is deferred to mouseUp so drags don't trigger it.
      */
     func handleMouseClick(_ event: NSEvent) {
+        if isHyperkeyHeld(event) { return }
+
         let location = NSEvent.mouseLocation
         let timestamp = currentMonotonicTime()
 
@@ -2273,7 +2275,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         switch clickDragState {
         case .pendingClassification(let downLocation, _):
             // Still pending = never exceeded drag threshold = it was a click
-            if isRippleEnabled {
+            if isRippleEnabled && !isHyperkeyHeld(event) {
                 debugLog("Click detected (not drag), firing ripple at: \(downLocation)")
                 lastMouseMovement = currentMonotonicTime()
                 ensureRippleManager().createRipple(at: downLocation)
@@ -2287,6 +2289,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
         clickDragState = .idle
+    }
+
+    /// All four modifier keys held simultaneously (Shift+Control+Option+Command).
+    private static let hyperkeyModifiers: NSEvent.ModifierFlags = [.shift, .control, .option, .command]
+
+    private func isHyperkeyHeld(_ event: NSEvent) -> Bool {
+        guard settings.isHyperkeyEnabled else { return false }
+        return event.modifierFlags.contains(Self.hyperkeyModifiers)
     }
 
     /**
@@ -2315,6 +2325,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             case .idle:
                 break
             }
+        }
+
+        // Suppress trail while hyperkey (Shift+Ctrl+Opt+Cmd) is held
+        if isHyperkeyHeld(event) {
+            lastMouseMovement = event.timestamp
+            latestMouseLocation = NSEvent.mouseLocation
+            return
         }
 
         let sample = MouseSample(location: NSEvent.mouseLocation, timestamp: event.timestamp)

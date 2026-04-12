@@ -90,15 +90,23 @@ SIGN_IDENTITY="Apple Development: jared@dca.io (6HZ3G86AKD)"
 codesign --force --deep --sign "$SIGN_IDENTITY" --entitlements entitlements.plist MouseTrail.app
 echo "✓ App signed with: $SIGN_IDENTITY"
 
-# Copy to Applications folder
+# Kill running instance before copying
+if pkill -x MouseTrail 2>/dev/null; then
+    echo "✓ Stopped running MouseTrail"
+    sleep 0.5
+fi
+
+# Copy to Applications folder (remove old bundle first for clean replacement)
 echo ""
 echo "Copying to /Applications..."
+\rm -rf /Applications/MouseTrail.app
 if cp -R MouseTrail.app /Applications/; then
     echo "✓ App installed to /Applications/MouseTrail.app"
 else
     echo "✗ Failed to copy to /Applications (may need sudo)"
 fi
 
+# Relaunch the app
 echo ""
-echo "The app can now be double-clicked to launch without Terminal!"
-echo "It will appear only as a menu bar icon."
+open /Applications/MouseTrail.app
+echo "✓ MouseTrail relaunched"
