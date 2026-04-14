@@ -198,6 +198,13 @@ struct MenuBarSettingsView: View {
                 Divider()
 
                 // MARK: - Debug Log
+                Picker("Log Level", selection: $settings.logLevelRaw) {
+                    ForEach(LogLevel.allCases, id: \.rawValue) { level in
+                        Text(level.label).tag(level.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+
                 DisclosureGroup("Debug Log", isExpanded: $debugLogExpanded) {
                     ScrollView {
                         Text(DebugLogger.shared.displayText)

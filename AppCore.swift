@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-14 11:27:25"
+let BUILD_TIMESTAMP = "2026-04-14 12:43:26"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -838,12 +838,12 @@ class RippleEffect {
                 do {
                     _rippleKernel = try CIKernel(functionName: "rippleDisplacement",
                                                    fromMetalLibraryData: data)
-                    debugLog("Metal ripple kernel loaded successfully")
+                    logInfo("Metal ripple kernel loaded successfully")
                 } catch {
-                    debugLog("Failed to create CIKernel from metallib: \(error)")
+                    logInfo("Failed to create CIKernel from metallib: \(error)")
                 }
             } else {
-                debugLog("RippleKernel.metallib not found in bundle")
+                logInfo("RippleKernel.metallib not found in bundle")
             }
         }
         return _rippleKernel
@@ -1101,19 +1101,66 @@ class DebugLogger {
     }
 }
 
-// Global function to replace print for debug messages
+// MARK: - Log Levels
+
+enum LogLevel: Int, Comparable, CaseIterable {
+    case off = 0
+    case info = 1
+    case debug = 2
+
+    var label: String {
+        switch self {
+        case .off: return "Off"
+        case .info: return "Info"
+        case .debug: return "Debug"
+        }
+    }
+
+    var prefix: String {
+        switch self {
+        case .off: return ""
+        case .info: return "[info]"
+        case .debug: return "[debug]"
+        }
+    }
+
+    static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
+/// Current log level — controlled via settings
+var currentLogLevel: LogLevel = .info
+
+/// Log at info level — high-level state changes, gesture detections, initialization
+func logInfo(_ message: String) {
+    writeLog(message, level: .info)
+}
+
+/// Log at debug level — verbose coordinate dumps, rect calculations, capture details
+func logDebug(_ message: String) {
+    writeLog(message, level: .debug)
+}
+
+/// Legacy function — routes to logDebug for backward compatibility
 func debugLog(_ message: String) {
-    print("[debug] \(message)")  // Still print to console
-    DebugLogger.shared.log(message)  // Also log to our debug window
+    writeLog(message, level: .debug)
+}
+
+private func writeLog(_ message: String, level: LogLevel) {
+    guard level <= currentLogLevel else { return }
+    let line = "\(level.prefix) \(message)"
+    print(line)
+    DebugLogger.shared.log(line)
     // Also append to file for debugging when launched via `open`
-    let line = "[debug] \(message)\n"
+    let fileLine = line + "\n"
     let logPath = "/tmp/mousetrail.log"
     if let handle = FileHandle(forWritingAtPath: logPath) {
         handle.seekToEndOfFile()
-        handle.write(line.data(using: .utf8)!)
+        handle.write(fileLine.data(using: .utf8)!)
         handle.closeFile()
     } else {
-        FileManager.default.createFile(atPath: logPath, contents: line.data(using: .utf8))
+        FileManager.default.createFile(atPath: logPath, contents: fileLine.data(using: .utf8))
     }
 }
 
@@ -1150,7 +1197,7 @@ class RippleManager: NSObject {
     func checkAndSetupScreenCapture() {
         guard !isCheckingScreenCapturePermission else { return }
         isCheckingScreenCapturePermission = true
-        debugLog("Checking screen capture permission...")
+        logInfo("Checking screen capture permission...")
         
         // Test permission by attempting a small capture
         Task { @MainActor in
@@ -1161,11 +1208,11 @@ class RippleManager: NSObject {
                 let _ = try await captureScreenArea(rect: testRect)
                 
                 // If we got here, we have permission
-                debugLog("Test capture succeeded - permission granted")
+                logInfo("Test capture succeeded - permission granted")
                 self.hasPermission = true
                 self.hasRequestedScreenCapturePermission = false
             } catch {
-                debugLog("Test capture failed: \(error)")
+                logInfo("Test capture failed: \(error)")
                 
                 // Check if it's a permission error (SCStreamError code -3801 or keyword match)
                 let nsError = error as NSError
@@ -1175,7 +1222,7 @@ class RippleManager: NSObject {
                     error.localizedDescription.contains("denied") ||
                     error.localizedDescription.contains("declined")
                 if isPermissionError {
-                    debugLog("Screen recording permission not granted")
+                    logInfo("Screen recording permission not granted")
                     self.hasPermission = false
                     
                     // Request permission once and rely on the explicit settings action
@@ -1186,7 +1233,7 @@ class RippleManager: NSObject {
                     }
                 } else {
                     // Some other error - maybe still try to set up
-                    debugLog("Non-permission error, attempting setup anyway")
+                    logInfo("Non-permission error, attempting setup anyway")
                     self.hasPermission = false
                 }
             }
@@ -1200,7 +1247,7 @@ class RippleManager: NSObject {
             return
         }
         
-        debugLog("Starting ripple creation at location (bottom-left): \(location)")
+        logInfo("Starting ripple at: \(location)")
         
         // Calculate available space to screen edges
         var minDistanceToEdge: CGFloat = .greatestFiniteMagnitude
@@ -1286,12 +1333,12 @@ class RippleManager: NSObject {
                     return
                 }
 
-                debugLog("Successfully captured screen area for ripple")
+                logInfo("Successfully captured screen area for ripple")
                 debugLog("[debug] Captured image size: \(capturedImage.width)x\(capturedImage.height)")
 
                 // If we got here, we have permission
                 if !self.hasPermission {
-                    debugLog("Capture succeeded - updating permission status")
+                    logInfo("Capture succeeded - updating permission status")
                     self.hasPermission = true
                 }
 
@@ -1302,12 +1349,12 @@ class RippleManager: NSObject {
                         speed: rippleSpeed, wavelength: rippleWavelength, damping: rippleDamping,
                         amplitude: rippleAmplitude, duration: rippleDuration, specularIntensity: rippleSpecular)
                     self.activeRipples.append(ripple)
-                    debugLog("Ripple created and added")
+                    logInfo("Ripple created and added")
                     self.onRippleAdded?()
                 }
             } catch {
-                debugLog("Error capturing screen: \(error)")
-                debugLog("Error details: \(error.localizedDescription)")
+                logInfo("Error capturing screen: \(error)")
+                logDebug("Error details: \(error.localizedDescription)")
                 
                 // Update permission status based on error (SCStreamError code -3801 or keyword match)
                 let nsError = error as NSError
@@ -1317,7 +1364,7 @@ class RippleManager: NSObject {
                     error.localizedDescription.contains("declined")
                 if isPermissionError {
                     self.hasPermission = false
-                    debugLog("Permission denied based on error")
+                    logInfo("Permission denied based on error")
                 }
             }
         }
@@ -1527,20 +1574,20 @@ class RippleManager: NSObject {
         activeRipples.removeAll { ripple in
             let shouldContinue = ripple.update()
             if !shouldContinue {
-                debugLog("Ripple animation complete, cleaning up")
+                logDebug("Ripple animation complete, cleaning up")
                 ripple.cleanup()
                 return true // Remove from array
             }
             return false
         }
         if countBefore > 0 && activeRipples.isEmpty {
-            debugLog("All ripples cleaned up")
+            logDebug("All ripples cleaned up")
         }
     }
     
     /// Clear all active ripples immediately
     func clearAllRipples() {
-        debugLog("Clearing all active ripples")
+        logDebug("Clearing all active ripples")
         for ripple in activeRipples {
             ripple.cleanup()
         }
@@ -2173,17 +2220,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func requestScreenRecordingPermission() {
-        debugLog("Manual permission request triggered")
+        logInfo("Manual permission request triggered")
 
         let currentStatus = CGPreflightScreenCaptureAccess()
-        debugLog("Current permission status: \(currentStatus)")
+        logInfo("Current permission status: \(currentStatus)")
 
         let rippleManager = ensureRippleManager()
         rippleManager.checkAndSetupScreenCapture()
 
         if !currentStatus {
             CGRequestScreenCaptureAccess()
-            debugLog("Permission requested, opening System Settings")
+            logInfo("Permission requested, opening System Settings")
 
             let urls = [
                 "x-apple.systempreferences:com.apple.Privacy-ScreenRecording",
@@ -2282,7 +2329,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("[debug] MouseTrail starting...")
 
         guard NSScreen.screens.first != nil else {
-            debugLog("No screens available")
+            logInfo("No screens available")
             NSApplication.shared.terminate(self)
             return
         }
@@ -2307,9 +2354,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         createTrailWindows()
         handleTrailSettingsChanged()
 
-        debugLog("MouseTrail initialized successfully")
-        debugLog("Trail windows created: \(trailWindows.count)")
-        debugLog("Monitoring mouse events...")
+        logInfo("MouseTrail initialized successfully")
+        logInfo("Trail windows created: \(trailWindows.count)")
+        logInfo("Monitoring mouse events...")
 
         // Cache initial system state
         updateCachedSystemInfo()
@@ -2365,7 +2412,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .pendingClassification(let downLocation, _):
             // Still pending = never exceeded drag threshold = it was a click
             if isRippleEnabled && !isShakeSuppressed && !isHyperkeyHeld(event) {
-                debugLog("Click detected (not drag), firing ripple at: \(downLocation)")
+                logInfo("Click detected, firing ripple at: \(downLocation)")
                 lastMouseMovement = currentMonotonicTime()
                 ensureRippleManager().createRipple(at: downLocation)
                 if motionState == .idle {
@@ -2436,7 +2483,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Check for circle gesture
         if circleGestureDetector.addSample(sample) {
-            debugLog("[debug] Circle gesture detected! Sending ⇧⌃⌘4")
+            logInfo("Circle gesture detected! Sending ⇧⌃⌘4")
             simulateKeyPress(keyCode: 0x15, modifiers: [.maskShift, .maskControl, .maskCommand])
         }
 
@@ -2479,7 +2526,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        debugLog("Falling back to 60Hz timer because AppKit display links are unavailable")
+        logInfo("Falling back to 60Hz timer because AppKit display links are unavailable")
         updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.updateActiveAnimation()
         }
@@ -2508,7 +2555,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleShakeDetected() {
         guard settings.isShakeToggleEnabled else { return }
         isShakeSuppressed.toggle()
-        debugLog("[debug] Shake toggle: visuals \(isShakeSuppressed ? "OFF" : "ON")")
+        logInfo("Shake toggle: visuals \(isShakeSuppressed ? "OFF" : "ON")")
         applyShakeSuppressionState()
     }
 
@@ -2535,7 +2582,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let source = CGEventSource(stateID: .combinedSessionState)
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
-            debugLog("[debug] Failed to create CGEvent for key simulation")
+            logInfo("Failed to create CGEvent for key simulation")
             return
         }
         keyDown.flags = modifiers
@@ -2652,7 +2699,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // If the user explicitly changes a visibility setting, cancel shake suppression
         if isShakeSuppressed {
             isShakeSuppressed = false
-            debugLog("[debug] Shake suppression cleared by settings change")
+            logInfo("Shake suppression cleared by settings change")
         }
 
         // Trail visibility

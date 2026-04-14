@@ -29,6 +29,7 @@ class TrailSettings {
     var isCrosshairVisible = false { didSet { save(); onVisibilityChanged?() } }
     var isHyperkeyEnabled = false { didSet { save() } }
     var isShakeToggleEnabled = false { didSet { save() } }
+    var logLevelRaw = 1 { didSet { save(); currentLogLevel = LogLevel(rawValue: logLevelRaw) ?? .info } }
 
     // MARK: - Trail Width
 
@@ -140,6 +141,7 @@ class TrailSettings {
         static let isCrosshairVisible = "visibility.isCrosshairVisible"
         static let isHyperkeyEnabled = "input.isHyperkeyEnabled"
         static let isShakeToggleEnabled = "input.isShakeToggleEnabled"
+        static let logLevelRaw = "app.logLevelRaw"
         static let rippleRadius = "ripple.radius"
         static let rippleSpeed = "ripple.speed"
         static let rippleWavelength = "ripple.wavelength"
@@ -182,6 +184,7 @@ class TrailSettings {
         d.set(isCrosshairVisible, forKey: Keys.isCrosshairVisible)
         d.set(isHyperkeyEnabled, forKey: Keys.isHyperkeyEnabled)
         d.set(isShakeToggleEnabled, forKey: Keys.isShakeToggleEnabled)
+        d.set(logLevelRaw, forKey: Keys.logLevelRaw)
         d.set(rippleRadius, forKey: Keys.rippleRadius)
         d.set(rippleSpeed, forKey: Keys.rippleSpeed)
         d.set(rippleWavelength, forKey: Keys.rippleWavelength)
@@ -231,6 +234,7 @@ class TrailSettings {
         if d.object(forKey: Keys.isCrosshairVisible) != nil { isCrosshairVisible = d.bool(forKey: Keys.isCrosshairVisible) }
         if d.object(forKey: Keys.isHyperkeyEnabled) != nil { isHyperkeyEnabled = d.bool(forKey: Keys.isHyperkeyEnabled) }
         if d.object(forKey: Keys.isShakeToggleEnabled) != nil { isShakeToggleEnabled = d.bool(forKey: Keys.isShakeToggleEnabled) }
+        if d.object(forKey: Keys.logLevelRaw) != nil { logLevelRaw = d.integer(forKey: Keys.logLevelRaw); currentLogLevel = LogLevel(rawValue: logLevelRaw) ?? .info }
         if d.object(forKey: Keys.rippleRadius) != nil { rippleRadius = d.double(forKey: Keys.rippleRadius) }
         if d.object(forKey: Keys.rippleSpeed) != nil { rippleSpeed = d.double(forKey: Keys.rippleSpeed) }
         if d.object(forKey: Keys.rippleWavelength) != nil { rippleWavelength = d.double(forKey: Keys.rippleWavelength) }
@@ -303,6 +307,7 @@ class TrailSettings {
         isRippleEnabled = false
         isCrosshairVisible = false
         isShakeToggleEnabled = false
+        logLevelRaw = 1
         rippleRadius = 150.0
         rippleSpeed = 120.0
         rippleWavelength = 25.0
