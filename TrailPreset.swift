@@ -10,6 +10,7 @@ struct TrailPreset: Codable, Identifiable, Equatable {
     var isTrailVisible: Bool
     var isRippleEnabled: Bool
     var isCrosshairVisible: Bool
+    var isShakeToggleEnabled: Bool
 
     // Trail Width
     var maxWidth: Double
@@ -52,6 +53,7 @@ struct TrailPreset: Codable, Identifiable, Equatable {
         isTrailVisible == other.isTrailVisible
             && isRippleEnabled == other.isRippleEnabled
             && isCrosshairVisible == other.isCrosshairVisible
+            && isShakeToggleEnabled == other.isShakeToggleEnabled
             && maxWidth == other.maxWidth
             && glowWidthMultiplier == other.glowWidthMultiplier
             && trailAlgorithm == other.trailAlgorithm
@@ -86,6 +88,7 @@ extension TrailPreset {
         case isTrailVisible
         case isRippleEnabled
         case isCrosshairVisible
+        case isShakeToggleEnabled
         case maxWidth
         case glowWidthMultiplier
         case trailAlgorithm
@@ -119,6 +122,7 @@ extension TrailPreset {
         isTrailVisible = try container.decode(Bool.self, forKey: .isTrailVisible)
         isRippleEnabled = try container.decode(Bool.self, forKey: .isRippleEnabled)
         isCrosshairVisible = try container.decodeIfPresent(Bool.self, forKey: .isCrosshairVisible) ?? false
+        isShakeToggleEnabled = try container.decodeIfPresent(Bool.self, forKey: .isShakeToggleEnabled) ?? false
         maxWidth = try container.decode(Double.self, forKey: .maxWidth)
         glowWidthMultiplier = try container.decode(Double.self, forKey: .glowWidthMultiplier)
         trailAlgorithm = try container.decodeIfPresent(TrailAlgorithm.self, forKey: .trailAlgorithm) ?? .smooth
@@ -151,6 +155,7 @@ extension TrailPreset {
         self.isTrailVisible = settings.isTrailVisible
         self.isRippleEnabled = settings.isRippleEnabled
         self.isCrosshairVisible = settings.isCrosshairVisible
+        self.isShakeToggleEnabled = settings.isShakeToggleEnabled
         self.maxWidth = settings.maxWidth
         self.glowWidthMultiplier = settings.glowWidthMultiplier
         self.trailAlgorithm = settings.trailAlgorithm

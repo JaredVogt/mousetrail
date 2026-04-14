@@ -64,6 +64,8 @@ struct MenuBarSettingsView: View {
                 Toggle("Ripple Effect", isOn: $settings.isRippleEnabled)
                 Toggle("Hyperkey Suppresses Trail", isOn: $settings.isHyperkeyEnabled)
                     .help("Hold all four modifiers (⇧⌃⌥⌘) to suppress trail and ripple")
+                Toggle("Shake to Toggle On/Off", isOn: $settings.isShakeToggleEnabled)
+                    .help("Shake the mouse to temporarily hide or show all visuals")
 
                 Divider()
 

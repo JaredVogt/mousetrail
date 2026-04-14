@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-14 08:59:07"
+let BUILD_TIMESTAMP = "2026-04-14 10:24:15"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -170,10 +170,12 @@ class TrailView: NSView {
     /// Crosshair layers
     private var crosshairVerticalLayer: CAShapeLayer!
     private var crosshairHorizontalLayer: CAShapeLayer!
+    private var lastCrosshairPoint: NSPoint?
     var isCrosshairVisible = false {
         didSet {
             crosshairVerticalLayer?.isHidden = !isCrosshairVisible
             crosshairHorizontalLayer?.isHidden = !isCrosshairVisible
+            if !isCrosshairVisible { lastCrosshairPoint = nil }
         }
     }
 
@@ -768,6 +770,13 @@ class TrailView: NSView {
     func updateCrosshair(at viewPoint: NSPoint) {
         guard isCrosshairVisible else { return }
 
+        // Skip redundant redraws when mouse hasn't moved
+        if let last = lastCrosshairPoint,
+           abs(last.x - viewPoint.x) < 0.5 && abs(last.y - viewPoint.y) < 0.5 {
+            return
+        }
+        lastCrosshairPoint = viewPoint
+
         CATransaction.begin()
         CATransaction.setDisableActions(true)
 
@@ -791,6 +800,7 @@ class TrailView: NSView {
         crosshairVerticalLayer?.path = nil
         crosshairHorizontalLayer?.path = nil
         CATransaction.commit()
+        lastCrosshairPoint = nil
     }
 }
 
@@ -1595,10 +1605,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var trailViews: [TrailView] = []
     
     // MARK: - Ripple Effect Properties
-    
+
     /// Manager for ripple effects
     var rippleManager: RippleManager?
-    
+
+    // MARK: - Shake Detection Properties
+
+    /// Detector for mouse shake gestures
+    var shakeDetector = ShakeDetector()
+
+    /// Whether visuals are currently suppressed by a shake gesture (ephemeral, not persisted)
+    var isShakeSuppressed = false
+
     // MARK: - Performance Optimization Properties
     
     /// Motion state for adaptive performance
@@ -2343,7 +2361,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         switch clickDragState {
         case .pendingClassification(let downLocation, _):
             // Still pending = never exceeded drag threshold = it was a click
-            if isRippleEnabled && !isHyperkeyHeld(event) {
+            if isRippleEnabled && !isShakeSuppressed && !isHyperkeyHeld(event) {
                 debugLog("Click detected (not drag), firing ripple at: \(downLocation)")
                 lastMouseMovement = currentMonotonicTime()
                 ensureRippleManager().createRipple(at: downLocation)
@@ -2407,7 +2425,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let sample = MouseSample(location: NSEvent.mouseLocation, timestamp: timestamp)
         lastMouseMovement = sample.timestamp
         enqueueMouseSample(location: sample.location, timestamp: sample.timestamp)
-        
+
+        // Check for shake gesture
+        if shakeDetector.addSample(sample) {
+            handleShakeDetected()
+        }
+
         // Transition to active state if we were idle
         if motionState == .idle {
             resetTrailRuntimeState(to: settings.trailAlgorithm, at: sample.timestamp, clearTrail: false)
@@ -2471,6 +2494,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         lastTrailRenderTime = 0
     }
     
+    // MARK: - Shake Detection
+
+    func handleShakeDetected() {
+        guard settings.isShakeToggleEnabled else { return }
+        isShakeSuppressed.toggle()
+        debugLog("[debug] Shake toggle: visuals \(isShakeSuppressed ? "OFF" : "ON")")
+        applyShakeSuppressionState()
+    }
+
+    func applyShakeSuppressionState() {
+        if isShakeSuppressed {
+            // Hide everything without touching settings or cached state
+            for trailView in trailViews {
+                trailView.isCrosshairVisible = false
+                trailView.clearCrosshair()
+            }
+            for trailWindow in trailWindows {
+                trailWindow.orderOut(nil)
+            }
+            rippleManager?.clearAllRipples()
+        } else {
+            // Restore from actual settings
+            applyVisibilitySettings()
+        }
+    }
+
     /**
      * Transition from active to idle state
      */
@@ -2530,7 +2579,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateCrosshairs() {
-        guard settings.isCrosshairVisible else { return }
+        guard settings.isCrosshairVisible, !isShakeSuppressed else { return }
         let mouseLocation = latestMouseLocation
 
         for trailView in trailViews {
@@ -2576,6 +2625,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Apply visibility toggle changes
     func applyVisibilitySettings() {
+        // If the user explicitly changes a visibility setting, cancel shake suppression
+        if isShakeSuppressed {
+            isShakeSuppressed = false
+            debugLog("[debug] Shake suppression cleared by settings change")
+        }
+
         // Trail visibility
         if settings.isTrailVisible != isTrailVisible {
             isTrailVisible = settings.isTrailVisible

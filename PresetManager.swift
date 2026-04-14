@@ -37,6 +37,7 @@ class PresetManager {
             isTrailVisible: settings.isTrailVisible,
             isRippleEnabled: settings.isRippleEnabled,
             isCrosshairVisible: settings.isCrosshairVisible,
+            isShakeToggleEnabled: settings.isShakeToggleEnabled,
             maxWidth: settings.maxWidth,
             glowWidthMultiplier: settings.glowWidthMultiplier,
             trailAlgorithm: settings.trailAlgorithm,
