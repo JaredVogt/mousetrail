@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-12 16:14:10"
+let BUILD_TIMESTAMP = "2026-04-13 14:27:57"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -745,6 +745,12 @@ class RippleEffect {
     /// Shared CIKernel loaded from the bundled metallib
     private static var _rippleKernel: CIKernel?
     private static var _kernelLoadAttempted = false
+    private static let sharedCIContext = CIContext(options: [
+        .useSoftwareRenderer: false,
+        // Each ripple is short-lived, so retaining intermediate textures per instance
+        // creates avoidable GPU memory churn.
+        .cacheIntermediates: false
+    ])
 
     static var rippleKernel: CIKernel? {
         if !_kernelLoadAttempted {
@@ -825,11 +831,8 @@ class RippleEffect {
         self.animationDuration = duration
         self.specularIntensity = specularIntensity
         
-        // Create Core Image context
-        self.ciContext = CIContext(options: [
-            .useSoftwareRenderer: false, // Use GPU acceleration
-            .cacheIntermediates: true
-        ])
+        // Reuse a single CIContext so repeated clicks do not recreate GPU-backed caches.
+        self.ciContext = Self.sharedCIContext
         
         // Create window for ripple effect
         let windowSize: CGFloat = maxRadius * 2
@@ -1066,6 +1069,8 @@ class RippleManager: NSObject {
 
     /// Has screen recording permission
     var hasPermission = false
+    private var isCheckingScreenCapturePermission = false
+    private var hasRequestedScreenCapturePermission = false
     
     override init() {
         super.init()
@@ -1074,10 +1079,13 @@ class RippleManager: NSObject {
     
     /// Check for existing permission and setup capture
     func checkAndSetupScreenCapture() {
+        guard !isCheckingScreenCapturePermission else { return }
+        isCheckingScreenCapturePermission = true
         debugLog("Checking screen capture permission...")
         
         // Test permission by attempting a small capture
         Task { @MainActor in
+            defer { self.isCheckingScreenCapturePermission = false }
             do {
                 // Try to capture a small area
                 let testRect = CGRect(x: 0, y: 0, width: 10, height: 10)
@@ -1086,6 +1094,7 @@ class RippleManager: NSObject {
                 // If we got here, we have permission
                 debugLog("Test capture succeeded - permission granted")
                 self.hasPermission = true
+                self.hasRequestedScreenCapturePermission = false
             } catch {
                 debugLog("Test capture failed: \(error)")
                 
@@ -1098,14 +1107,13 @@ class RippleManager: NSObject {
                     error.localizedDescription.contains("declined")
                 if isPermissionError {
                     debugLog("Screen recording permission not granted")
+                    self.hasPermission = false
                     
-                    // Request permission
-                    CGRequestScreenCaptureAccess()
-                    
-                    // Try again after delay - use Task to avoid Sendable warning
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                        self.checkAndSetupScreenCapture()
+                    // Request permission once and rely on the explicit settings action
+                    // to retry later instead of polling in the background forever.
+                    if !self.hasRequestedScreenCapturePermission {
+                        self.hasRequestedScreenCapturePermission = true
+                        CGRequestScreenCaptureAccess()
                     }
                 } else {
                     // Some other error - maybe still try to set up
@@ -2303,6 +2311,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      * Handles mouse movement events with motion detection
      */
     func handleMouseMovement(_ event: NSEvent) {
+        let timestamp = currentMonotonicTime()
+
         // Suppress trail during left-click drags
         if event.type == .leftMouseDragged {
             switch clickDragState {
@@ -2314,12 +2324,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     debugLog("Classified as drag (distance: \(distance))")
                 }
                 // Suppress trail during pending period for left-drag events
-                lastMouseMovement = event.timestamp
+                lastMouseMovement = timestamp
                 latestMouseLocation = NSEvent.mouseLocation
                 return
             case .dragging:
                 // Keep animation driver alive but suppress trail
-                lastMouseMovement = event.timestamp
+                lastMouseMovement = timestamp
                 latestMouseLocation = NSEvent.mouseLocation
                 return
             case .idle:
@@ -2329,12 +2339,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Suppress trail while hyperkey (Shift+Ctrl+Opt+Cmd) is held
         if isHyperkeyHeld(event) {
-            lastMouseMovement = event.timestamp
+            lastMouseMovement = timestamp
             latestMouseLocation = NSEvent.mouseLocation
             return
         }
 
-        let sample = MouseSample(location: NSEvent.mouseLocation, timestamp: event.timestamp)
+        let sample = MouseSample(location: NSEvent.mouseLocation, timestamp: timestamp)
         lastMouseMovement = sample.timestamp
         enqueueMouseSample(location: sample.location, timestamp: sample.timestamp)
         
@@ -2451,16 +2461,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         updateTrailAnimation(at: now)
 
-        // Update ripple animations
-        let rippleCount = rippleManager?.activeRipples.count ?? 0
-        if rippleCount > 0 {
-            debugLog("Updating \(rippleCount) ripples, timeSinceLastMove=\(now - lastMouseMovement)")
-        }
         rippleManager?.updateRipples()
 
         if now - lastMouseMovement >= idleTimeout {
-            let hasRipples = !(rippleManager?.activeRipples.isEmpty ?? true)
-            debugLog("Idle timeout fired, hasRipples=\(hasRipples), motionState=\(motionState)")
             transitionToIdleState()
         }
     }
