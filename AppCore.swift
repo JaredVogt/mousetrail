@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-14 10:24:15"
+let BUILD_TIMESTAMP = "2026-04-14 11:27:25"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -1614,6 +1614,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Detector for mouse shake gestures
     var shakeDetector = ShakeDetector()
 
+    /// Detector for circular mouse gestures
+    var circleGestureDetector = CircleGestureDetector()
+
     /// Whether visuals are currently suppressed by a shake gesture (ephemeral, not persisted)
     var isShakeSuppressed = false
 
@@ -2431,6 +2434,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             handleShakeDetected()
         }
 
+        // Check for circle gesture
+        if circleGestureDetector.addSample(sample) {
+            debugLog("[debug] Circle gesture detected! Sending ⇧⌃⌘4")
+            simulateKeyPress(keyCode: 0x15, modifiers: [.maskShift, .maskControl, .maskCommand])
+        }
+
         // Transition to active state if we were idle
         if motionState == .idle {
             resetTrailRuntimeState(to: settings.trailAlgorithm, at: sample.timestamp, clearTrail: false)
@@ -2518,6 +2527,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Restore from actual settings
             applyVisibilitySettings()
         }
+    }
+
+    // MARK: - Simulated Key Events
+
+    func simulateKeyPress(keyCode: CGKeyCode, modifiers: CGEventFlags) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            debugLog("[debug] Failed to create CGEvent for key simulation")
+            return
+        }
+        keyDown.flags = modifiers
+        keyUp.flags = modifiers
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
     }
 
     /**
