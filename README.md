@@ -73,7 +73,6 @@ The app runs as a menu bar application (no Dock icon). Click the menu bar icon t
 | Shake mouse rapidly | Toggle all visuals on/off |
 | Draw two circles | Trigger hotkey (⇧⌃⌘4) |
 | Hold ⇧⌃⌥⌘ (hyperkey) | Suppress trail and ripple while held |
-| Hold ⌘ | Enable info panel dragging |
 
 ### Settings
 
