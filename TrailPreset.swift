@@ -9,6 +9,7 @@ struct TrailPreset: Codable, Identifiable, Equatable {
     // Visibility
     var isTrailVisible: Bool
     var isRippleEnabled: Bool
+    var isCrosshairVisible: Bool
 
     // Trail Width
     var maxWidth: Double
@@ -50,6 +51,7 @@ struct TrailPreset: Codable, Identifiable, Equatable {
     func settingsMatch(_ other: TrailPreset) -> Bool {
         isTrailVisible == other.isTrailVisible
             && isRippleEnabled == other.isRippleEnabled
+            && isCrosshairVisible == other.isCrosshairVisible
             && maxWidth == other.maxWidth
             && glowWidthMultiplier == other.glowWidthMultiplier
             && trailAlgorithm == other.trailAlgorithm
@@ -83,6 +85,7 @@ extension TrailPreset {
         case updatedAt
         case isTrailVisible
         case isRippleEnabled
+        case isCrosshairVisible
         case maxWidth
         case glowWidthMultiplier
         case trailAlgorithm
@@ -115,6 +118,7 @@ extension TrailPreset {
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         isTrailVisible = try container.decode(Bool.self, forKey: .isTrailVisible)
         isRippleEnabled = try container.decode(Bool.self, forKey: .isRippleEnabled)
+        isCrosshairVisible = try container.decodeIfPresent(Bool.self, forKey: .isCrosshairVisible) ?? false
         maxWidth = try container.decode(Double.self, forKey: .maxWidth)
         glowWidthMultiplier = try container.decode(Double.self, forKey: .glowWidthMultiplier)
         trailAlgorithm = try container.decodeIfPresent(TrailAlgorithm.self, forKey: .trailAlgorithm) ?? .smooth
@@ -146,6 +150,7 @@ extension TrailPreset {
         self.updatedAt = Date()
         self.isTrailVisible = settings.isTrailVisible
         self.isRippleEnabled = settings.isRippleEnabled
+        self.isCrosshairVisible = settings.isCrosshairVisible
         self.maxWidth = settings.maxWidth
         self.glowWidthMultiplier = settings.glowWidthMultiplier
         self.trailAlgorithm = settings.trailAlgorithm

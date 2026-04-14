@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-13 14:27:57"
+let BUILD_TIMESTAMP = "2026-04-14 08:59:07"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -167,6 +167,16 @@ class TrailView: NSView {
     private var glowMiddleLayer: CAShapeLayer!
     private var glowInnerLayer: CAShapeLayer!
 
+    /// Crosshair layers
+    private var crosshairVerticalLayer: CAShapeLayer!
+    private var crosshairHorizontalLayer: CAShapeLayer!
+    var isCrosshairVisible = false {
+        didSet {
+            crosshairVerticalLayer?.isHidden = !isCrosshairVisible
+            crosshairHorizontalLayer?.isHidden = !isCrosshairVisible
+        }
+    }
+
     private var activeCoreLayers: [CAShapeLayer] {
         usesReducedLayerStack ? [coreMiddleLayer, coreInnerLayer] : [coreOuterLayer, coreMiddleLayer, coreInnerLayer]
     }
@@ -312,6 +322,25 @@ class TrailView: NSView {
         gradientMaskLayer.locations = [0, 0.3, 0.7, 1]
         
         layer?.addSublayer(trailContainer)
+
+        // Crosshair layers — 1px lines spanning full screen
+        crosshairVerticalLayer = CAShapeLayer()
+        crosshairVerticalLayer.fillColor = nil
+        crosshairVerticalLayer.strokeColor = NSColor.white.withAlphaComponent(0.3).cgColor
+        crosshairVerticalLayer.lineWidth = 1.0
+        crosshairVerticalLayer.frame = bounds
+        crosshairVerticalLayer.isHidden = true
+
+        crosshairHorizontalLayer = CAShapeLayer()
+        crosshairHorizontalLayer.fillColor = nil
+        crosshairHorizontalLayer.strokeColor = NSColor.white.withAlphaComponent(0.3).cgColor
+        crosshairHorizontalLayer.lineWidth = 1.0
+        crosshairHorizontalLayer.frame = bounds
+        crosshairHorizontalLayer.isHidden = true
+
+        layer?.addSublayer(crosshairVerticalLayer)
+        layer?.addSublayer(crosshairHorizontalLayer)
+
         updateLayerVisibility()
     }
     
@@ -329,6 +358,8 @@ class TrailView: NSView {
             glowMiddleLayer?.frame = bounds
             glowInnerLayer?.frame = bounds
             gradientMaskLayer?.frame = bounds
+            crosshairVerticalLayer?.frame = bounds
+            crosshairHorizontalLayer?.frame = bounds
         }
     }
     
@@ -731,8 +762,36 @@ class TrailView: NSView {
         
         CATransaction.commit()
     }
-    
-    
+
+
+    /// Update crosshair position (viewPoint is in view-local coordinates)
+    func updateCrosshair(at viewPoint: NSPoint) {
+        guard isCrosshairVisible else { return }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        let verticalPath = CGMutablePath()
+        verticalPath.move(to: CGPoint(x: viewPoint.x, y: 0))
+        verticalPath.addLine(to: CGPoint(x: viewPoint.x, y: bounds.height))
+        crosshairVerticalLayer.path = verticalPath
+
+        let horizontalPath = CGMutablePath()
+        horizontalPath.move(to: CGPoint(x: 0, y: viewPoint.y))
+        horizontalPath.addLine(to: CGPoint(x: bounds.width, y: viewPoint.y))
+        crosshairHorizontalLayer.path = horizontalPath
+
+        CATransaction.commit()
+    }
+
+    /// Clear crosshair paths
+    func clearCrosshair() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        crosshairVerticalLayer?.path = nil
+        crosshairHorizontalLayer?.path = nil
+        CATransaction.commit()
+    }
 }
 
 /**
@@ -1658,6 +1717,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         trailView.coreColor = settings.coreTrailNSColor
         trailView.glowColor = settings.glowTrailNSColor
         trailView.usesReducedLayerStack = experiments.useReducedLayerStack
+        trailView.isCrosshairVisible = settings.isCrosshairVisible
         trailView.updateLayerProperties()
     }
 
@@ -2462,12 +2522,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateTrailAnimation(at: now)
 
         rippleManager?.updateRipples()
+        updateCrosshairs()
 
         if now - lastMouseMovement >= idleTimeout {
             transitionToIdleState()
         }
     }
-    
+
+    private func updateCrosshairs() {
+        guard settings.isCrosshairVisible else { return }
+        let mouseLocation = latestMouseLocation
+
+        for trailView in trailViews {
+            guard let window = trailView.window else { continue }
+            let screenFrame = window.frame
+
+            if screenFrame.contains(mouseLocation) {
+                let viewPoint = NSPoint(
+                    x: mouseLocation.x - screenFrame.origin.x,
+                    y: mouseLocation.y - screenFrame.origin.y
+                )
+                trailView.updateCrosshair(at: viewPoint)
+            } else {
+                trailView.clearCrosshair()
+            }
+        }
+    }
+
     func updateCachedSystemInfo() {
         if let frontApp = NSWorkspace.shared.frontmostApplication {
             cachedFrontmostApp = frontApp.localizedName ?? "Unknown"
@@ -2498,13 +2579,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Trail visibility
         if settings.isTrailVisible != isTrailVisible {
             isTrailVisible = settings.isTrailVisible
-            for trailWindow in trailWindows {
-                if isTrailVisible {
-                    trailWindow.makeKeyAndOrderFront(nil)
-                } else {
-                    trailWindow.orderOut(nil)
-                }
+        }
+
+        // Crosshair visibility
+        for trailView in trailViews {
+            trailView.isCrosshairVisible = settings.isCrosshairVisible
+        }
+        if !settings.isCrosshairVisible {
+            for trailView in trailViews {
+                trailView.clearCrosshair()
             }
+        }
+
+        // Show trail windows if either trail or crosshairs are enabled
+        let shouldShowWindows = isTrailVisible || settings.isCrosshairVisible
+        for trailWindow in trailWindows {
+            if shouldShowWindows {
+                trailWindow.orderFront(nil)
+            } else {
+                trailWindow.orderOut(nil)
+            }
+        }
+
+        // If crosshairs just enabled, render immediately
+        if settings.isCrosshairVisible {
+            updateCrosshairs()
         }
 
         // Ripple effect
@@ -2574,8 +2673,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             trailWindow.contentView = trailView
             
-            // Only show if trails are enabled
-            if isTrailVisible {
+            // Only show if trails or crosshairs are enabled
+            if isTrailVisible || settings.isCrosshairVisible {
                 trailWindow.orderFront(nil)
             }
             

@@ -26,6 +26,7 @@ class TrailSettings {
     var isTrailVisible = true { didSet { save(); onVisibilityChanged?() } }
     var isInfoPanelVisible = false { didSet { save(); onVisibilityChanged?() } }
     var isRippleEnabled = false { didSet { save(); onVisibilityChanged?() } }
+    var isCrosshairVisible = false { didSet { save(); onVisibilityChanged?() } }
     var isHyperkeyEnabled = false { didSet { save() } }
 
     // MARK: - Trail Width
@@ -135,6 +136,7 @@ class TrailSettings {
         static let glowTrailB = "trail.glowTrailB"
         static let isTrailVisible = "trail.isTrailVisible"
         static let isRippleEnabled = "trail.isRippleEnabled"
+        static let isCrosshairVisible = "crosshair.isVisible"
         static let isHyperkeyEnabled = "input.isHyperkeyEnabled"
         static let rippleRadius = "ripple.radius"
         static let rippleSpeed = "ripple.speed"
@@ -175,6 +177,7 @@ class TrailSettings {
         d.set(glowTrailB, forKey: Keys.glowTrailB)
         d.set(isTrailVisible, forKey: Keys.isTrailVisible)
         d.set(isRippleEnabled, forKey: Keys.isRippleEnabled)
+        d.set(isCrosshairVisible, forKey: Keys.isCrosshairVisible)
         d.set(isHyperkeyEnabled, forKey: Keys.isHyperkeyEnabled)
         d.set(rippleRadius, forKey: Keys.rippleRadius)
         d.set(rippleSpeed, forKey: Keys.rippleSpeed)
@@ -222,6 +225,7 @@ class TrailSettings {
         if d.object(forKey: Keys.glowTrailB) != nil { glowTrailB = d.double(forKey: Keys.glowTrailB) }
         if d.object(forKey: Keys.isTrailVisible) != nil { isTrailVisible = d.bool(forKey: Keys.isTrailVisible) }
         if d.object(forKey: Keys.isRippleEnabled) != nil { isRippleEnabled = d.bool(forKey: Keys.isRippleEnabled) }
+        if d.object(forKey: Keys.isCrosshairVisible) != nil { isCrosshairVisible = d.bool(forKey: Keys.isCrosshairVisible) }
         if d.object(forKey: Keys.isHyperkeyEnabled) != nil { isHyperkeyEnabled = d.bool(forKey: Keys.isHyperkeyEnabled) }
         if d.object(forKey: Keys.rippleRadius) != nil { rippleRadius = d.double(forKey: Keys.rippleRadius) }
         if d.object(forKey: Keys.rippleSpeed) != nil { rippleSpeed = d.double(forKey: Keys.rippleSpeed) }
@@ -244,6 +248,7 @@ class TrailSettings {
         isSuppressingCallbacks = true
         isTrailVisible = preset.isTrailVisible
         isRippleEnabled = preset.isRippleEnabled
+        isCrosshairVisible = preset.isCrosshairVisible
         maxWidth = preset.maxWidth
         glowWidthMultiplier = preset.glowWidthMultiplier
         trailAlgorithm = preset.trailAlgorithm
@@ -291,6 +296,7 @@ class TrailSettings {
         glowTrailB = 1.0
         isTrailVisible = true
         isRippleEnabled = false
+        isCrosshairVisible = false
         rippleRadius = 150.0
         rippleSpeed = 120.0
         rippleWavelength = 25.0
