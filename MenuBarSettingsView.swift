@@ -6,6 +6,7 @@ struct MenuBarSettingsView: View {
     var liveInfo: LiveInfoModel
     var presetManager: PresetManager
     var onRequestPermission: () -> Void
+    var onRequestAccessibility: () -> Void
     var onStartInfoUpdates: () -> Void
     var onStopInfoUpdates: () -> Void
     var onShowHelp: () -> Void
@@ -16,6 +17,47 @@ struct MenuBarSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
+                // MARK: - Permissions Banner
+                if !liveInfo.screenRecordingGranted || !liveInfo.accessibilityGranted {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Permissions Needed")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.orange)
+
+                        if !liveInfo.screenRecordingGranted {
+                            HStack {
+                                Text("✗ Screen Recording")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.red)
+                                Spacer()
+                                Button("Grant") { onRequestPermission() }
+                                    .controlSize(.small)
+                            }
+                            Text("Required for ripple effect")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if !liveInfo.accessibilityGranted {
+                            HStack {
+                                Text("✗ Accessibility")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.red)
+                                Spacer()
+                                Button("Grant") { onRequestAccessibility() }
+                                    .controlSize(.small)
+                            }
+                            Text("Required for circle gesture hotkeys")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(8)
+                    .background(.orange.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.orange.opacity(0.3)))
+                }
+
                 // MARK: - System Info
                 Toggle("Show System Info", isOn: $settings.isInfoPanelVisible)
 

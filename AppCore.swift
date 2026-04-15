@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-14 18:19:25"
+let BUILD_TIMESTAMP = "2026-04-14 20:48:08"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -2297,6 +2297,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         liveInfo.mouseY = Int(latestMouseLocation.y)
         liveInfo.frontmostApp = cachedFrontmostApp
         liveInfo.screenRecordingGranted = rippleManager?.hasPermission ?? false
+        liveInfo.accessibilityGranted = AXIsProcessTrusted()
         let screens = NSScreen.screens
         liveInfo.screenCount = screens.count
         liveInfo.screenDescriptions = screens.enumerated().map { (i, s) in
@@ -2369,6 +2370,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
                 debugLog("Re-checking permission after manual request")
                 self?.rippleManager?.checkAndSetupScreenCapture()
+            }
+        }
+    }
+
+    func requestAccessibilityPermission() {
+        logInfo("Accessibility permission request triggered")
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        let granted = AXIsProcessTrustedWithOptions(options)
+        logInfo("Accessibility trusted: \(granted)")
+
+        if !granted {
+            let urls = [
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                "x-apple.systempreferences:com.apple.preference.security"
+            ]
+            for urlString in urls {
+                if let url = URL(string: urlString), NSWorkspace.shared.open(url) {
+                    debugLog("Opened System Settings with URL: \(urlString)")
+                    break
+                }
             }
         }
     }

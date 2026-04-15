@@ -90,8 +90,11 @@ All settings are accessible from the menu bar panel:
 
 ## Permissions
 
-- **Accessibility**: Required for the circle gesture to simulate keypresses via `CGEvent`. Grant access in **System Settings > Privacy & Security > Accessibility**.
-- Mouse tracking and keyboard modifier monitoring use public APIs and do not require special permissions.
+The app shows a warning banner in the settings panel when permissions are missing.
+
+- **Accessibility**: Required for circle gesture hotkeys (simulates keypresses via `CGEvent`). Grant in **System Settings > Privacy & Security > Accessibility**.
+- **Screen Recording**: Required for the ripple effect (captures screen content for distortion). Grant in **System Settings > Privacy & Security > Screen Recording**.
+- Mouse tracking, trail rendering, and keyboard modifier monitoring use public APIs and do not require special permissions.
 
 ## Architecture
 

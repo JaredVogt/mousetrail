@@ -27,7 +27,7 @@ The whole gestures thing is a new thing to set up. We need a way to edit particu
 ## #3 Crosshair needs configurable opacity and precise cursor alignment
 
 **Date:** 2026-04-14
-**Status:** open
+**Status:** closed
 **Tags:** `note`
 
 Need to get properties to cross the terrace. Right now it's just a white line. Want to be able to have that be smarter and set opacity, etc. Also, the point of where it is needs to be maybe right exactly at the tip of the arrow. Anyways, not sure. Need to figure that one out.

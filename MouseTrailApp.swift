@@ -13,6 +13,9 @@ struct MouseTrailApp: App {
                 onRequestPermission: { [weak appDelegate] in
                     appDelegate?.requestScreenRecordingPermission()
                 },
+                onRequestAccessibility: { [weak appDelegate] in
+                    appDelegate?.requestAccessibilityPermission()
+                },
                 onStartInfoUpdates: { [weak appDelegate] in
                     appDelegate?.startInfoUpdates()
                 },
