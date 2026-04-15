@@ -7,7 +7,7 @@ A running log of bugs, ideas, and notes captured during development.
 ## #1 Implement multiple logging levels
 
 **Date:** 2026-04-14
-**Status:** open
+**Status:** closed
 **Tags:** `idea`
 
 We need multiple levels of logging. One that allows you to debug, to truly debug, and another that's just a general logging of high-level actions.
@@ -41,5 +41,15 @@ Need to get properties to cross the terrace. Right now it's just a white line. W
 **Tags:** `note`
 
 This needs special permissions to run, and we need to make sure that we have defined that in both the README and then also if it doesn't have those permissions when the app opens up at the top, it should indicate that there should be a section that basically says you need to add this permission. When those permissions are added, then those, then that doesn't need to show up at the top of the menu bar app.
+
+---
+
+## #5 Hyper+circle gesture: fire hotkey on hyper release
+
+**Date:** 2026-04-14
+**Status:** closed
+**Tags:** `idea` `question`
+
+hold down hyper key when doing circles to trigger shift+ctrl+cmd+2 - that should happen when hyper is released? Otherwise it would conflict?
 
 ---

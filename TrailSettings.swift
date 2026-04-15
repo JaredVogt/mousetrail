@@ -27,7 +27,6 @@ class TrailSettings {
     var isInfoPanelVisible = false { didSet { save(); onVisibilityChanged?() } }
     var isRippleEnabled = false { didSet { save(); onVisibilityChanged?() } }
     var isCrosshairVisible = false { didSet { save(); onVisibilityChanged?() } }
-    var isHyperkeyEnabled = false { didSet { save() } }
     var isShakeToggleEnabled = false { didSet { save() } }
     var logLevelRaw = 1 { didSet { save(); currentLogLevel = LogLevel(rawValue: logLevelRaw) ?? .info } }
 
@@ -66,6 +65,14 @@ class TrailSettings {
 
     var glowOuterOpacity = 0.02 { didSet { save(); onChanged?() } }
     var glowMiddleOpacity = 0.08 { didSet { save(); onChanged?() } }
+
+    // MARK: - Crosshair Appearance
+
+    var crosshairR = 1.0 { didSet { save(); onChanged?() } }
+    var crosshairG = 1.0 { didSet { save(); onChanged?() } }
+    var crosshairB = 1.0 { didSet { save(); onChanged?() } }
+    var crosshairOpacity = 0.3 { didSet { save(); onChanged?() } }
+    var crosshairLineWidth = 1.0 { didSet { save(); onChanged?() } }
 
     // MARK: - Ripple Effect
 
@@ -118,6 +125,20 @@ class TrailSettings {
         NSColor(red: glowTrailR, green: glowTrailG, blue: glowTrailB, alpha: 1.0)
     }
 
+    var crosshairColor: Color {
+        get { Color(red: crosshairR, green: crosshairG, blue: crosshairB) }
+        set {
+            guard let components = NSColor(newValue).usingColorSpace(.sRGB) else { return }
+            crosshairR = components.redComponent
+            crosshairG = components.greenComponent
+            crosshairB = components.blueComponent
+        }
+    }
+
+    var crosshairNSColor: NSColor {
+        NSColor(red: crosshairR, green: crosshairG, blue: crosshairB, alpha: crosshairOpacity)
+    }
+
     // MARK: - Persistence
 
     private enum Keys {
@@ -139,7 +160,11 @@ class TrailSettings {
         static let isTrailVisible = "trail.isTrailVisible"
         static let isRippleEnabled = "trail.isRippleEnabled"
         static let isCrosshairVisible = "visibility.isCrosshairVisible"
-        static let isHyperkeyEnabled = "input.isHyperkeyEnabled"
+        static let crosshairR = "crosshair.r"
+        static let crosshairG = "crosshair.g"
+        static let crosshairB = "crosshair.b"
+        static let crosshairOpacity = "crosshair.opacity"
+        static let crosshairLineWidth = "crosshair.lineWidth"
         static let isShakeToggleEnabled = "input.isShakeToggleEnabled"
         static let logLevelRaw = "app.logLevelRaw"
         static let rippleRadius = "ripple.radius"
@@ -182,7 +207,11 @@ class TrailSettings {
         d.set(isTrailVisible, forKey: Keys.isTrailVisible)
         d.set(isRippleEnabled, forKey: Keys.isRippleEnabled)
         d.set(isCrosshairVisible, forKey: Keys.isCrosshairVisible)
-        d.set(isHyperkeyEnabled, forKey: Keys.isHyperkeyEnabled)
+        d.set(crosshairR, forKey: Keys.crosshairR)
+        d.set(crosshairG, forKey: Keys.crosshairG)
+        d.set(crosshairB, forKey: Keys.crosshairB)
+        d.set(crosshairOpacity, forKey: Keys.crosshairOpacity)
+        d.set(crosshairLineWidth, forKey: Keys.crosshairLineWidth)
         d.set(isShakeToggleEnabled, forKey: Keys.isShakeToggleEnabled)
         d.set(logLevelRaw, forKey: Keys.logLevelRaw)
         d.set(rippleRadius, forKey: Keys.rippleRadius)
@@ -232,7 +261,11 @@ class TrailSettings {
         if d.object(forKey: Keys.isTrailVisible) != nil { isTrailVisible = d.bool(forKey: Keys.isTrailVisible) }
         if d.object(forKey: Keys.isRippleEnabled) != nil { isRippleEnabled = d.bool(forKey: Keys.isRippleEnabled) }
         if d.object(forKey: Keys.isCrosshairVisible) != nil { isCrosshairVisible = d.bool(forKey: Keys.isCrosshairVisible) }
-        if d.object(forKey: Keys.isHyperkeyEnabled) != nil { isHyperkeyEnabled = d.bool(forKey: Keys.isHyperkeyEnabled) }
+        if d.object(forKey: Keys.crosshairR) != nil { crosshairR = d.double(forKey: Keys.crosshairR) }
+        if d.object(forKey: Keys.crosshairG) != nil { crosshairG = d.double(forKey: Keys.crosshairG) }
+        if d.object(forKey: Keys.crosshairB) != nil { crosshairB = d.double(forKey: Keys.crosshairB) }
+        if d.object(forKey: Keys.crosshairOpacity) != nil { crosshairOpacity = d.double(forKey: Keys.crosshairOpacity) }
+        if d.object(forKey: Keys.crosshairLineWidth) != nil { crosshairLineWidth = d.double(forKey: Keys.crosshairLineWidth) }
         if d.object(forKey: Keys.isShakeToggleEnabled) != nil { isShakeToggleEnabled = d.bool(forKey: Keys.isShakeToggleEnabled) }
         if d.object(forKey: Keys.logLevelRaw) != nil { logLevelRaw = d.integer(forKey: Keys.logLevelRaw); currentLogLevel = LogLevel(rawValue: logLevelRaw) ?? .info }
         if d.object(forKey: Keys.rippleRadius) != nil { rippleRadius = d.double(forKey: Keys.rippleRadius) }
@@ -280,6 +313,11 @@ class TrailSettings {
         rippleDuration = preset.rippleDuration
         rippleSpecularIntensity = preset.rippleSpecularIntensity
         isShakeToggleEnabled = preset.isShakeToggleEnabled
+        crosshairR = preset.crosshairR
+        crosshairG = preset.crosshairG
+        crosshairB = preset.crosshairB
+        crosshairOpacity = preset.crosshairOpacity
+        crosshairLineWidth = preset.crosshairLineWidth
         isSuppressingCallbacks = false
         save()
         onChanged?()
@@ -306,6 +344,11 @@ class TrailSettings {
         isTrailVisible = true
         isRippleEnabled = false
         isCrosshairVisible = false
+        crosshairR = 1.0
+        crosshairG = 1.0
+        crosshairB = 1.0
+        crosshairOpacity = 0.3
+        crosshairLineWidth = 1.0
         isShakeToggleEnabled = false
         logLevelRaw = 1
         rippleRadius = 150.0

@@ -61,9 +61,15 @@ struct MenuBarSettingsView: View {
                 SectionHeader("Visibility")
                 Toggle("Show Trail", isOn: $settings.isTrailVisible)
                 Toggle("Crosshair Lines", isOn: $settings.isCrosshairVisible)
+                if settings.isCrosshairVisible {
+                    InlineColorEditor("Crosshair Color",
+                        r: $settings.crosshairR,
+                        g: $settings.crosshairG,
+                        b: $settings.crosshairB)
+                    SettingsSlider("Opacity", value: $settings.crosshairOpacity, range: 0.05...1.0, format: "%.2f")
+                    SettingsSlider("Line Width", value: $settings.crosshairLineWidth, range: 0.5...5.0, format: "%.1f px")
+                }
                 Toggle("Ripple Effect", isOn: $settings.isRippleEnabled)
-                Toggle("Hyperkey Suppresses Trail", isOn: $settings.isHyperkeyEnabled)
-                    .help("Hold all four modifiers (⇧⌃⌥⌘) to suppress trail and ripple")
                 Toggle("Shake to Toggle On/Off", isOn: $settings.isShakeToggleEnabled)
                     .help("Shake the mouse to temporarily hide or show all visuals")
 
@@ -206,12 +212,25 @@ struct MenuBarSettingsView: View {
                 .pickerStyle(.segmented)
 
                 DisclosureGroup("Debug Log", isExpanded: $debugLogExpanded) {
-                    ScrollView {
-                        Text(DebugLogger.shared.displayText)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.green)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(LogFileViewer.shared.lines.reversed()) { line in
+                                    Text(line.text)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundStyle(logLineColor(line.kind))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .id(line.id)
+                                }
+                            }
                             .textSelection(.enabled)
+                            .padding(4)
+                        }
+                        .onChange(of: LogFileViewer.shared.lines.last?.id) { _, newID in
+                            if let id = newID {
+                                withAnimation { proxy.scrollTo(id, anchor: .top) }
+                            }
+                        }
                     }
                     .frame(height: 150)
                     .background(Color.black)
@@ -219,12 +238,12 @@ struct MenuBarSettingsView: View {
 
                     HStack {
                         Button("Clear") {
-                            DebugLogger.shared.clear()
+                            LogFileViewer.shared.clear()
                         }
                         Button("Copy") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(
-                                DebugLogger.shared.getAllMessages(), forType: .string)
+                                LogFileViewer.shared.getAllText(), forType: .string)
                         }
                         Spacer()
                     }
@@ -268,6 +287,15 @@ struct MenuBarSettingsView: View {
         .frame(width: 320, height: 700)
         .onAppear { onStartInfoUpdates() }
         .onDisappear { onStopInfoUpdates() }
+    }
+
+    private func logLineColor(_ kind: LogFileViewer.LogLine.Kind) -> Color {
+        switch kind {
+        case .restart: return .cyan
+        case .error: return .red
+        case .debug: return .gray
+        case .info: return .green
+        }
     }
 }
 

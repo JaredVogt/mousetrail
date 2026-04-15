@@ -29,7 +29,7 @@ A macOS menu bar application that renders a hardware-accelerated glowing trail b
 ### Gesture Controls
 - **Shake to toggle**: Rapidly shake the mouse to hide/show all visuals
 - **Circle gesture**: Draw two circles with the mouse to trigger a configurable hotkey (default: ⇧⌃⌘4)
-- **Hyperkey suppression**: Hold all four modifiers (⇧⌃⌥⌘) to temporarily suppress trail and ripple
+- **Hyper+circle gesture**: Hold all four modifiers (⇧⌃⌥⌘) while drawing circles to trigger a second hotkey (⇧⌃⌘2) on release
 
 ### Menu Bar Settings Panel
 - Full SwiftUI settings panel accessible from the menu bar icon
@@ -72,13 +72,13 @@ The app runs as a menu bar application (no Dock icon). Click the menu bar icon t
 |---------|--------|
 | Shake mouse rapidly | Toggle all visuals on/off |
 | Draw two circles | Trigger hotkey (⇧⌃⌘4) |
-| Hold ⇧⌃⌥⌘ (hyperkey) | Suppress trail and ripple while held |
+| Hold ⇧⌃⌥⌘ + draw circles | Trigger hotkey (⇧⌃⌘2) on release |
 
 ### Settings
 
 All settings are accessible from the menu bar panel:
 
-- **Visibility**: Toggle trail, crosshair, ripple, shake-to-toggle, and hyperkey suppression
+- **Visibility**: Toggle trail, crosshair, ripple, and shake-to-toggle
 - **Trail Motion**: Choose between Smooth and Spring algorithms
 - **Trail Width**: Max width and glow multiplier
 - **Movement**: Threshold distance and minimum velocity

@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-14 12:43:26"
+let BUILD_TIMESTAMP = "2026-04-14 18:19:25"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -325,20 +325,18 @@ class TrailView: NSView {
         
         layer?.addSublayer(trailContainer)
 
-        // Crosshair layers — 1px lines spanning full screen
+        // Crosshair layers — lines spanning full screen
         crosshairVerticalLayer = CAShapeLayer()
         crosshairVerticalLayer.fillColor = nil
-        crosshairVerticalLayer.strokeColor = NSColor.white.withAlphaComponent(0.3).cgColor
-        crosshairVerticalLayer.lineWidth = 1.0
         crosshairVerticalLayer.frame = bounds
         crosshairVerticalLayer.isHidden = true
 
         crosshairHorizontalLayer = CAShapeLayer()
         crosshairHorizontalLayer.fillColor = nil
-        crosshairHorizontalLayer.strokeColor = NSColor.white.withAlphaComponent(0.3).cgColor
-        crosshairHorizontalLayer.lineWidth = 1.0
         crosshairHorizontalLayer.frame = bounds
         crosshairHorizontalLayer.isHidden = true
+
+        applyCrosshairStyle(color: NSColor.white.withAlphaComponent(0.3), lineWidth: 1.0)
 
         layer?.addSublayer(crosshairVerticalLayer)
         layer?.addSublayer(crosshairHorizontalLayer)
@@ -793,6 +791,17 @@ class TrailView: NSView {
         CATransaction.commit()
     }
 
+    /// Apply crosshair color and line width to both layers.
+    func applyCrosshairStyle(color: NSColor, lineWidth: CGFloat) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        crosshairVerticalLayer?.strokeColor = color.cgColor
+        crosshairVerticalLayer?.lineWidth = lineWidth
+        crosshairHorizontalLayer?.strokeColor = color.cgColor
+        crosshairHorizontalLayer?.lineWidth = lineWidth
+        CATransaction.commit()
+    }
+
     /// Clear crosshair paths
     func clearCrosshair() {
         CATransaction.begin()
@@ -1058,46 +1067,143 @@ class RippleEffect {
 // StreamOutputHandler removed - using one-shot capture instead
 
 /**
- * DebugLogger - Captures debug messages for display in the app
+ * LogFileViewer - Tails /tmp/mousetrail.log and provides colored, chunked display.
+ * Reads the last chunk of the file on open and polls for new lines.
  */
 @Observable
-class DebugLogger {
-    static let shared = DebugLogger()
+class LogFileViewer {
+    static let shared = LogFileViewer()
 
-    private var messages: [String] = []
-    private let maxMessages = 500
-    private let dateFormatter: DateFormatter
+    static let logPath = "/tmp/mousetrail.log"
+    static let restartMarker = "━━━ MouseTrail started"
+    private static let tailBytes = 32_768  // Read last 32KB on initial load
 
-    var displayText: String = ""
+    struct LogLine: Identifiable {
+        let id: Int
+        let text: String
+        let kind: Kind
 
-    private init() {
-        dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "HH:mm:ss"
+        enum Kind {
+            case info
+            case debug
+            case error
+            case restart
+        }
     }
 
-    func log(_ message: String) {
-        let timestamp = dateFormatter.string(from: Date())
-        let logMessage = "[\(timestamp)] \(message)"
+    var lines: [LogLine] = []
+    private var fileOffset: UInt64 = 0
+    private var nextID = 0
+    private var pollTimer: Timer?
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.messages.append(logMessage)
+    private init() {}
 
-            if self.messages.count > self.maxMessages {
-                self.messages.removeFirst()
-            }
+    /// Write a restart separator to the log file, then load the tail.
+    func start() {
+        writeRestartMarker()
+        loadTail()
+        startPolling()
+    }
 
-            self.displayText = self.messages.joined(separator: "\n")
+    func stop() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+    }
+
+    /// Load the last chunk of the log file.
+    func loadTail() {
+        guard let handle = FileHandle(forReadingAtPath: Self.logPath) else { return }
+        defer { handle.closeFile() }
+
+        let fileSize = handle.seekToEndOfFile()
+        let readStart: UInt64 = fileSize > UInt64(Self.tailBytes) ? fileSize - UInt64(Self.tailBytes) : 0
+        handle.seek(toFileOffset: readStart)
+        let data = handle.readDataToEndOfFile()
+        fileOffset = fileSize
+
+        guard let content = String(data: data, encoding: .utf8) else { return }
+
+        // If we started mid-file, drop the first partial line
+        var text = content
+        if readStart > 0, let firstNewline = text.firstIndex(of: "\n") {
+            text = String(text[text.index(after: firstNewline)...])
+        }
+
+        let rawLines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
+        lines = rawLines.map { makeLine($0) }
+    }
+
+    /// Poll for new lines appended since last read.
+    func pollNewLines() {
+        guard let handle = FileHandle(forReadingAtPath: Self.logPath) else { return }
+        defer { handle.closeFile() }
+
+        let fileSize = handle.seekToEndOfFile()
+        guard fileSize > fileOffset else {
+            if fileSize < fileOffset { fileOffset = 0 }  // File was truncated
+            return
+        }
+
+        handle.seek(toFileOffset: fileOffset)
+        let data = handle.readDataToEndOfFile()
+        fileOffset = fileSize
+
+        guard let content = String(data: data, encoding: .utf8) else { return }
+        let rawLines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
+        lines.append(contentsOf: rawLines.map { makeLine($0) })
+
+        // Cap total lines kept in memory
+        if lines.count > 2000 {
+            lines.removeFirst(lines.count - 2000)
         }
     }
 
     func clear() {
-        messages.removeAll()
-        displayText = ""
+        lines.removeAll()
+        // Truncate the file
+        FileManager.default.createFile(atPath: Self.logPath, contents: nil)
+        fileOffset = 0
+        writeRestartMarker()
     }
 
-    func getAllMessages() -> String {
-        return messages.joined(separator: "\n")
+    func getAllText() -> String {
+        lines.map(\.text).joined(separator: "\n")
+    }
+
+    private func writeRestartMarker() {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let marker = "\(Self.restartMarker) \(df.string(from: Date())) ━━━\n"
+        if let handle = FileHandle(forWritingAtPath: Self.logPath) {
+            handle.seekToEndOfFile()
+            handle.write(marker.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: Self.logPath, contents: marker.data(using: .utf8))
+        }
+    }
+
+    private func makeLine(_ text: String) -> LogLine {
+        let kind: LogLine.Kind
+        if text.contains(Self.restartMarker) {
+            kind = .restart
+        } else if text.contains("[error]") || text.contains("crash") || text.contains("fatal") {
+            kind = .error
+        } else if text.contains("[debug]") {
+            kind = .debug
+        } else {
+            kind = .info
+        }
+        let line = LogLine(id: nextID, text: text, kind: kind)
+        nextID += 1
+        return line
+    }
+
+    private func startPolling() {
+        pollTimer?.invalidate()
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.pollNewLines()
+        }
     }
 }
 
@@ -1149,12 +1255,12 @@ func debugLog(_ message: String) {
 
 private func writeLog(_ message: String, level: LogLevel) {
     guard level <= currentLogLevel else { return }
-    let line = "\(level.prefix) \(message)"
+    let df = DateFormatter()
+    df.dateFormat = "HH:mm:ss"
+    let line = "[\(df.string(from: Date()))] \(level.prefix) \(message)"
     print(line)
-    DebugLogger.shared.log(line)
-    // Also append to file for debugging when launched via `open`
     let fileLine = line + "\n"
-    let logPath = "/tmp/mousetrail.log"
+    let logPath = LogFileViewer.logPath
     if let handle = FileHandle(forWritingAtPath: logPath) {
         handle.seekToEndOfFile()
         handle.write(fileLine.data(using: .utf8)!)
@@ -1664,6 +1770,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Detector for circular mouse gestures
     var circleGestureDetector = CircleGestureDetector()
 
+    /// Whether a circle gesture was detected while hyperkey was held, pending release to fire
+    var hyperCirclePending = false
+
     /// Whether visuals are currently suppressed by a shake gesture (ephemeral, not persisted)
     var isShakeSuppressed = false
 
@@ -1786,6 +1895,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         trailView.glowColor = settings.glowTrailNSColor
         trailView.usesReducedLayerStack = experiments.useReducedLayerStack
         trailView.isCrosshairVisible = settings.isCrosshairVisible
+        trailView.applyCrosshairStyle(
+            color: settings.crosshairNSColor,
+            lineWidth: CGFloat(settings.crosshairLineWidth)
+        )
         trailView.updateLayerProperties()
     }
 
@@ -2323,10 +2436,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) {
             eventMonitors.append(mouseUpLocalMonitor)
         }
+
+        // Monitor modifier key changes for hyper+circle release detection
+        if let flagsGlobalMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: .flagsChanged,
+            handler: { [weak self] event in
+                self?.handleFlagsChanged(event)
+            }
+        ) {
+            eventMonitors.append(flagsGlobalMonitor)
+        }
+        if let flagsLocalMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: .flagsChanged,
+            handler: { [weak self] event in
+                self?.handleFlagsChanged(event)
+                return event
+            }
+        ) {
+            eventMonitors.append(flagsLocalMonitor)
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        print("[debug] MouseTrail starting...")
+        LogFileViewer.shared.start()
+        logInfo("MouseTrail starting...")
 
         guard NSScreen.screens.first != nil else {
             logInfo("No screens available")
@@ -2384,8 +2517,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      * Ripple is deferred to mouseUp so drags don't trigger it.
      */
     func handleMouseClick(_ event: NSEvent) {
-        if isHyperkeyHeld(event) { return }
-
         let location = NSEvent.mouseLocation
         let timestamp = currentMonotonicTime()
 
@@ -2411,7 +2542,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         switch clickDragState {
         case .pendingClassification(let downLocation, _):
             // Still pending = never exceeded drag threshold = it was a click
-            if isRippleEnabled && !isShakeSuppressed && !isHyperkeyHeld(event) {
+            if isRippleEnabled && !isShakeSuppressed {
                 logInfo("Click detected, firing ripple at: \(downLocation)")
                 lastMouseMovement = currentMonotonicTime()
                 ensureRippleManager().createRipple(at: downLocation)
@@ -2430,9 +2561,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// All four modifier keys held simultaneously (Shift+Control+Option+Command).
     private static let hyperkeyModifiers: NSEvent.ModifierFlags = [.shift, .control, .option, .command]
 
-    private func isHyperkeyHeld(_ event: NSEvent) -> Bool {
-        guard settings.isHyperkeyEnabled else { return false }
-        return event.modifierFlags.contains(Self.hyperkeyModifiers)
+    /// Fires the hyper+circle hotkey when hyperkey is released after a circle gesture was detected.
+    private func handleFlagsChanged(_ event: NSEvent) {
+        if !event.modifierFlags.contains(Self.hyperkeyModifiers) {
+            if hyperCirclePending {
+                hyperCirclePending = false
+                logInfo("Hyper released with pending circle — firing ⇧⌃⌘2")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    self?.simulateKeyPress(keyCode: 0x13, modifiers: [.maskShift, .maskControl, .maskCommand])
+                }
+            }
+        }
     }
 
     /**
@@ -2465,13 +2604,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Suppress trail while hyperkey (Shift+Ctrl+Opt+Cmd) is held
-        if isHyperkeyHeld(event) {
-            lastMouseMovement = timestamp
-            latestMouseLocation = NSEvent.mouseLocation
-            return
-        }
-
         let sample = MouseSample(location: NSEvent.mouseLocation, timestamp: timestamp)
         lastMouseMovement = sample.timestamp
         enqueueMouseSample(location: sample.location, timestamp: sample.timestamp)
@@ -2483,8 +2615,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Check for circle gesture
         if circleGestureDetector.addSample(sample) {
-            logInfo("Circle gesture detected! Sending ⇧⌃⌘4")
-            simulateKeyPress(keyCode: 0x15, modifiers: [.maskShift, .maskControl, .maskCommand])
+            if event.modifierFlags.contains(Self.hyperkeyModifiers) {
+                hyperCirclePending = true
+                logInfo("Hyper+circle gesture detected, pending hyper release")
+            } else {
+                logInfo("Circle gesture detected! Sending ⇧⌃⌘4")
+                simulateKeyPress(keyCode: 0x15, modifiers: [.maskShift, .maskControl, .maskCommand])
+            }
         }
 
         // Transition to active state if we were idle
