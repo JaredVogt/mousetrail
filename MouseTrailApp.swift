@@ -31,6 +31,21 @@ struct MouseTrailApp: App {
                     process.executableURL = URL(fileURLWithPath: bundlePath)
                     try? process.run()
                     NSApplication.shared.terminate(nil)
+                },
+                getGestureRouter: { [weak appDelegate] in
+                    appDelegate?.gestureRouter ?? GestureRouter(shakeZones: [], circleConfig: CircleGestureConfig())
+                },
+                setGestureRouter: { [weak appDelegate] router in
+                    appDelegate?.gestureRouter = router
+                    appDelegate?.saveGestureSettings()
+                },
+                getCalibrationSession: { [weak appDelegate] in
+                    appDelegate?.calibrationSession
+                },
+                startCalibration: { [weak appDelegate] in
+                    let session = CalibrationSession()
+                    appDelegate?.calibrationSession = session
+                    return session
                 }
             )
         } label: {

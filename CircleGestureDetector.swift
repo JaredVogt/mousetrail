@@ -1,8 +1,29 @@
 import Foundation
 
+/// Direction of circular motion.
+enum CircleDirection: String, Codable {
+    case clockwise
+    case counterClockwise
+}
+
+/// Rich event returned when a circle gesture is detected.
+struct CircleEvent {
+    /// Direction of the circular motion
+    let direction: CircleDirection
+
+    /// Average distance from centroid during the circles
+    let averageRadius: CGFloat
+
+    /// Number of full circles completed
+    let circleCount: Int
+
+    let timestamp: TimeInterval
+}
+
 /// Detects circular mouse gestures by tracking cumulative angular displacement
 /// around the centroid of recent mouse positions. Triggers when the required
 /// number of full circles are completed within a time window.
+/// Returns a CircleEvent with direction and radius information.
 struct CircleGestureDetector {
     // MARK: - Configuration
 
@@ -24,6 +45,10 @@ struct CircleGestureDetector {
     /// Number of full circles required to trigger
     var requiredCircles: Int = 2
 
+    /// Maximum ratio of maxRadius/minRadius during circle accumulation.
+    /// Rejects overly wobbly circles / spirals. Default 3.0.
+    var maximumRadiusVariance: CGFloat = 3.0
+
     // MARK: - Internal State
 
     private var samples: [MouseSample] = []
@@ -41,10 +66,17 @@ struct CircleGestureDetector {
     /// Last time the gesture fired (for cooldown)
     private var lastDetectionTimestamp: TimeInterval = 0
 
+    /// Track min/max radius during current circle accumulation for quality check
+    private var currentMinRadius: CGFloat = .greatestFiniteMagnitude
+    private var currentMaxRadius: CGFloat = 0
+
+    /// Track net angular direction (positive = CCW in standard math coords, but CW on screen since Y is flipped)
+    private var netAngleSign: Double = 0
+
     // MARK: - API
 
-    /// Called on every mouse event. Returns true if the circle gesture was just detected.
-    mutating func addSample(_ sample: MouseSample) -> Bool {
+    /// Called on every mouse event. Returns a CircleEvent if the circle gesture was just detected.
+    mutating func addSample(_ sample: MouseSample) -> CircleEvent? {
         // Append and prune old samples
         samples.append(sample)
         let cutoff = sample.timestamp - (sampleWindow + 0.25)
@@ -53,7 +85,7 @@ struct CircleGestureDetector {
         } else {
             samples.removeAll()
             resetAngleTracking()
-            return false
+            return nil
         }
         if samples.count > maxSamples {
             samples.removeFirst(samples.count - maxSamples)
@@ -61,11 +93,11 @@ struct CircleGestureDetector {
 
         // Cooldown check
         if sample.timestamp - lastDetectionTimestamp < cooldownDuration {
-            return false
+            return nil
         }
 
         // Need enough samples for a meaningful centroid
-        guard samples.count >= 8 else { return false }
+        guard samples.count >= 8 else { return nil }
 
         // Compute centroid of retained samples
         let centroid = computeCentroid()
@@ -78,7 +110,18 @@ struct CircleGestureDetector {
         // Must be far enough from centroid
         guard distance >= Double(minimumRadius) else {
             resetAngleTracking()
-            return false
+            return nil
+        }
+
+        // Track radius bounds for quality check
+        let cgDistance = CGFloat(distance)
+        currentMinRadius = min(currentMinRadius, cgDistance)
+        currentMaxRadius = max(currentMaxRadius, cgDistance)
+
+        // Reject if circle is too wobbly (spiral/oval)
+        if currentMinRadius > 0 && currentMaxRadius / currentMinRadius > maximumRadiusVariance {
+            resetAngleTracking()
+            return nil
         }
 
         // Check speed from previous sample
@@ -90,7 +133,7 @@ struct CircleGestureDetector {
                 let sdy = sample.location.y - prev.location.y
                 let speed = sqrt(sdx * sdx + sdy * sdy) / CGFloat(dt)
                 if speed < minimumSpeed {
-                    return false
+                    return nil
                 }
             }
         }
@@ -104,6 +147,7 @@ struct CircleGestureDetector {
             while delta < -Double.pi { delta += 2 * Double.pi }
 
             cumulativeAngle += delta
+            netAngleSign += delta
         }
 
         previousAngle = currentAngle
@@ -113,19 +157,34 @@ struct CircleGestureDetector {
             circleTimestamps.append(sample.timestamp)
             cumulativeAngle = 0
             previousAngle = nil
+            // Reset radius tracking for next circle
+            currentMinRadius = .greatestFiniteMagnitude
+            currentMaxRadius = 0
 
             // Prune old circle timestamps
             circleTimestamps = circleTimestamps.filter { sample.timestamp - $0 <= circleTimeWindow }
 
             // Check if enough circles completed
             if circleTimestamps.count >= requiredCircles {
+                // Determine direction from net angle sign.
+                // On macOS, screen Y increases downward, so positive atan2 delta
+                // with increasing angle = clockwise visually.
+                let direction: CircleDirection = netAngleSign >= 0 ? .clockwise : .counterClockwise
+                let avgRadius = (currentMinRadius == .greatestFiniteMagnitude) ? 0 : (currentMinRadius + currentMaxRadius) / 2
+                let event = CircleEvent(
+                    direction: direction,
+                    averageRadius: avgRadius,
+                    circleCount: circleTimestamps.count,
+                    timestamp: sample.timestamp
+                )
                 circleTimestamps.removeAll()
+                netAngleSign = 0
                 lastDetectionTimestamp = sample.timestamp
-                return true
+                return event
             }
         }
 
-        return false
+        return nil
     }
 
     /// Reset all state
@@ -141,6 +200,9 @@ struct CircleGestureDetector {
     private mutating func resetAngleTracking() {
         cumulativeAngle = 0
         previousAngle = nil
+        currentMinRadius = .greatestFiniteMagnitude
+        currentMaxRadius = 0
+        netAngleSign = 0
     }
 
     private func computeCentroid() -> NSPoint {

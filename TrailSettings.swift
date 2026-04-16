@@ -30,6 +30,28 @@ class TrailSettings {
     var isShakeToggleEnabled = false { didSet { save() } }
     var logLevelRaw = 1 { didSet { save(); currentLogLevel = LogLevel(rawValue: logLevelRaw) ?? .info } }
 
+    // MARK: - Shake Detector Parameters
+
+    /// Callback when gesture detector parameters change
+    var onGestureParamsChanged: (() -> Void)?
+
+    var shakeTimeWindow = 0.5 { didSet { save(); onGestureParamsChanged?() } }
+    var shakeRequiredReversals = 3 { didSet { save(); onGestureParamsChanged?() } }
+    var shakeMinDisplacement = 50.0 { didSet { save(); onGestureParamsChanged?() } }
+    var shakeMinVelocity = 800.0 { didSet { save(); onGestureParamsChanged?() } }
+    var shakeCooldown = 1.0 { didSet { save(); onGestureParamsChanged?() } }
+    var shakeAngularTolerance = 45.0 { didSet { save(); onGestureParamsChanged?() } }
+
+    // MARK: - Circle Detector Parameters
+
+    var circleTimeWindow = 3.0 { didSet { save(); onGestureParamsChanged?() } }
+    var circleSampleWindow = 1.5 { didSet { save(); onGestureParamsChanged?() } }
+    var circleMinRadius = 30.0 { didSet { save(); onGestureParamsChanged?() } }
+    var circleMinSpeed = 200.0 { didSet { save(); onGestureParamsChanged?() } }
+    var circleCooldown = 2.0 { didSet { save(); onGestureParamsChanged?() } }
+    var circleRequiredCircles = 2 { didSet { save(); onGestureParamsChanged?() } }
+    var circleMaxRadiusVariance = 3.0 { didSet { save(); onGestureParamsChanged?() } }
+
     // MARK: - Trail Width
 
     var maxWidth = 8.0 { didSet { save(); onChanged?() } }
@@ -166,6 +188,19 @@ class TrailSettings {
         static let crosshairOpacity = "crosshair.opacity"
         static let crosshairLineWidth = "crosshair.lineWidth"
         static let isShakeToggleEnabled = "input.isShakeToggleEnabled"
+        static let shakeTimeWindow = "gesture.shakeTimeWindow"
+        static let shakeRequiredReversals = "gesture.shakeRequiredReversals"
+        static let shakeMinDisplacement = "gesture.shakeMinDisplacement"
+        static let shakeMinVelocity = "gesture.shakeMinVelocity"
+        static let shakeCooldown = "gesture.shakeCooldown"
+        static let shakeAngularTolerance = "gesture.shakeAngularTolerance"
+        static let circleTimeWindow = "gesture.circleTimeWindow"
+        static let circleSampleWindow = "gesture.circleSampleWindow"
+        static let circleMinRadius = "gesture.circleMinRadius"
+        static let circleMinSpeed = "gesture.circleMinSpeed"
+        static let circleCooldown = "gesture.circleCooldown"
+        static let circleRequiredCircles = "gesture.circleRequiredCircles"
+        static let circleMaxRadiusVariance = "gesture.circleMaxRadiusVariance"
         static let logLevelRaw = "app.logLevelRaw"
         static let rippleRadius = "ripple.radius"
         static let rippleSpeed = "ripple.speed"
@@ -213,6 +248,19 @@ class TrailSettings {
         d.set(crosshairOpacity, forKey: Keys.crosshairOpacity)
         d.set(crosshairLineWidth, forKey: Keys.crosshairLineWidth)
         d.set(isShakeToggleEnabled, forKey: Keys.isShakeToggleEnabled)
+        d.set(shakeTimeWindow, forKey: Keys.shakeTimeWindow)
+        d.set(shakeRequiredReversals, forKey: Keys.shakeRequiredReversals)
+        d.set(shakeMinDisplacement, forKey: Keys.shakeMinDisplacement)
+        d.set(shakeMinVelocity, forKey: Keys.shakeMinVelocity)
+        d.set(shakeCooldown, forKey: Keys.shakeCooldown)
+        d.set(shakeAngularTolerance, forKey: Keys.shakeAngularTolerance)
+        d.set(circleTimeWindow, forKey: Keys.circleTimeWindow)
+        d.set(circleSampleWindow, forKey: Keys.circleSampleWindow)
+        d.set(circleMinRadius, forKey: Keys.circleMinRadius)
+        d.set(circleMinSpeed, forKey: Keys.circleMinSpeed)
+        d.set(circleCooldown, forKey: Keys.circleCooldown)
+        d.set(circleRequiredCircles, forKey: Keys.circleRequiredCircles)
+        d.set(circleMaxRadiusVariance, forKey: Keys.circleMaxRadiusVariance)
         d.set(logLevelRaw, forKey: Keys.logLevelRaw)
         d.set(rippleRadius, forKey: Keys.rippleRadius)
         d.set(rippleSpeed, forKey: Keys.rippleSpeed)
@@ -267,6 +315,19 @@ class TrailSettings {
         if d.object(forKey: Keys.crosshairOpacity) != nil { crosshairOpacity = d.double(forKey: Keys.crosshairOpacity) }
         if d.object(forKey: Keys.crosshairLineWidth) != nil { crosshairLineWidth = d.double(forKey: Keys.crosshairLineWidth) }
         if d.object(forKey: Keys.isShakeToggleEnabled) != nil { isShakeToggleEnabled = d.bool(forKey: Keys.isShakeToggleEnabled) }
+        if d.object(forKey: Keys.shakeTimeWindow) != nil { shakeTimeWindow = d.double(forKey: Keys.shakeTimeWindow) }
+        if d.object(forKey: Keys.shakeRequiredReversals) != nil { shakeRequiredReversals = d.integer(forKey: Keys.shakeRequiredReversals) }
+        if d.object(forKey: Keys.shakeMinDisplacement) != nil { shakeMinDisplacement = d.double(forKey: Keys.shakeMinDisplacement) }
+        if d.object(forKey: Keys.shakeMinVelocity) != nil { shakeMinVelocity = d.double(forKey: Keys.shakeMinVelocity) }
+        if d.object(forKey: Keys.shakeCooldown) != nil { shakeCooldown = d.double(forKey: Keys.shakeCooldown) }
+        if d.object(forKey: Keys.shakeAngularTolerance) != nil { shakeAngularTolerance = d.double(forKey: Keys.shakeAngularTolerance) }
+        if d.object(forKey: Keys.circleTimeWindow) != nil { circleTimeWindow = d.double(forKey: Keys.circleTimeWindow) }
+        if d.object(forKey: Keys.circleSampleWindow) != nil { circleSampleWindow = d.double(forKey: Keys.circleSampleWindow) }
+        if d.object(forKey: Keys.circleMinRadius) != nil { circleMinRadius = d.double(forKey: Keys.circleMinRadius) }
+        if d.object(forKey: Keys.circleMinSpeed) != nil { circleMinSpeed = d.double(forKey: Keys.circleMinSpeed) }
+        if d.object(forKey: Keys.circleCooldown) != nil { circleCooldown = d.double(forKey: Keys.circleCooldown) }
+        if d.object(forKey: Keys.circleRequiredCircles) != nil { circleRequiredCircles = d.integer(forKey: Keys.circleRequiredCircles) }
+        if d.object(forKey: Keys.circleMaxRadiusVariance) != nil { circleMaxRadiusVariance = d.double(forKey: Keys.circleMaxRadiusVariance) }
         if d.object(forKey: Keys.logLevelRaw) != nil { logLevelRaw = d.integer(forKey: Keys.logLevelRaw); currentLogLevel = LogLevel(rawValue: logLevelRaw) ?? .info }
         if d.object(forKey: Keys.rippleRadius) != nil { rippleRadius = d.double(forKey: Keys.rippleRadius) }
         if d.object(forKey: Keys.rippleSpeed) != nil { rippleSpeed = d.double(forKey: Keys.rippleSpeed) }

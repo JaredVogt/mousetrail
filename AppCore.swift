@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-14 20:48:08"
+let BUILD_TIMESTAMP = "2026-04-16 13:48:40"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -1762,7 +1762,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Manager for ripple effects
     var rippleManager: RippleManager?
 
-    // MARK: - Shake Detection Properties
+    // MARK: - Gesture Detection Properties
 
     /// Detector for mouse shake gestures
     var shakeDetector = ShakeDetector()
@@ -1770,11 +1770,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Detector for circular mouse gestures
     var circleGestureDetector = CircleGestureDetector()
 
+    /// Routes gesture events to configured actions
+    var gestureRouter: GestureRouter = {
+        let config = loadGestureConfig()
+        return GestureRouter(shakeZones: config.shakeZones, circleConfig: config.circleConfig)
+    }()
+
     /// Whether a circle gesture was detected while hyperkey was held, pending release to fire
     var hyperCirclePending = false
 
+    /// Pending circle event for hyper+circle (needs direction info for routing on release)
+    var pendingCircleEvent: CircleEvent? = nil
+
     /// Whether visuals are currently suppressed by a shake gesture (ephemeral, not persisted)
     var isShakeSuppressed = false
+
+    /// Active calibration session (nil when not calibrating)
+    var calibrationSession: CalibrationSession? = nil
 
     // MARK: - Performance Optimization Properties
     
@@ -2503,6 +2515,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.onVisibilityChanged = { [weak self] in
             self?.applyVisibilitySettings()
         }
+        settings.onGestureParamsChanged = { [weak self] in
+            self?.applyGestureDetectorParams()
+        }
+        applyGestureDetectorParams()
 
         // Create trail windows for each screen
         createTrailWindows()
@@ -2582,14 +2598,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// All four modifier keys held simultaneously (Shift+Control+Option+Command).
     private static let hyperkeyModifiers: NSEvent.ModifierFlags = [.shift, .control, .option, .command]
 
-    /// Fires the hyper+circle hotkey when hyperkey is released after a circle gesture was detected.
+    /// Fires the hyper+circle action when hyperkey is released after a circle gesture was detected.
     private func handleFlagsChanged(_ event: NSEvent) {
         if !event.modifierFlags.contains(Self.hyperkeyModifiers) {
-            if hyperCirclePending {
+            if hyperCirclePending, let circleEvent = pendingCircleEvent {
                 hyperCirclePending = false
-                logInfo("Hyper released with pending circle — firing ⇧⌃⌘2")
+                pendingCircleEvent = nil
+                let action = gestureRouter.action(for: circleEvent, isHyperPressed: true)
+                logInfo("Hyper released with pending circle — executing: \(action.displayName)")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                    self?.simulateKeyPress(keyCode: 0x13, modifiers: [.maskShift, .maskControl, .maskCommand])
+                    self?.executeGestureAction(action)
                 }
             }
         }
@@ -2629,19 +2647,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         lastMouseMovement = sample.timestamp
         enqueueMouseSample(location: sample.location, timestamp: sample.timestamp)
 
+        // Feed calibration session if active
+        _ = calibrationSession?.addSample(sample)
+
         // Check for shake gesture
-        if shakeDetector.addSample(sample) {
-            handleShakeDetected()
+        if let shakeEvent = shakeDetector.addSample(sample) {
+            handleShakeDetected(shakeEvent)
         }
 
         // Check for circle gesture
-        if circleGestureDetector.addSample(sample) {
+        if let circleEvent = circleGestureDetector.addSample(sample) {
+            logInfo("Circle detected: \(circleEvent.direction.rawValue) radius=\(String(format: "%.0f", circleEvent.averageRadius)) circles=\(circleEvent.circleCount)")
             if event.modifierFlags.contains(Self.hyperkeyModifiers) {
                 hyperCirclePending = true
+                pendingCircleEvent = circleEvent
                 logInfo("Hyper+circle gesture detected, pending hyper release")
             } else {
-                logInfo("Circle gesture detected! Sending ⇧⌃⌘4")
-                simulateKeyPress(keyCode: 0x15, modifiers: [.maskShift, .maskControl, .maskCommand])
+                let action = gestureRouter.action(for: circleEvent, isHyperPressed: false)
+                executeGestureAction(action)
             }
         }
 
@@ -2710,11 +2733,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     // MARK: - Shake Detection
 
-    func handleShakeDetected() {
+    func handleShakeDetected(_ event: ShakeEvent) {
         guard settings.isShakeToggleEnabled else { return }
-        isShakeSuppressed.toggle()
-        logInfo("Shake toggle: visuals \(isShakeSuppressed ? "OFF" : "ON")")
-        applyShakeSuppressionState()
+        let angleDegrees = event.axisAngle * 180 / .pi
+        logInfo("Shake detected: axis=\(String(format: "%.0f", angleDegrees))° reversals=\(event.reversals) velocity=\(String(format: "%.0f", event.averageVelocity)) spread=\(String(format: "%.1f", event.angularSpread * 180 / .pi))°")
+
+        guard let zone = gestureRouter.matchingZone(for: event) else {
+            logDebug("Shake at \(String(format: "%.0f", angleDegrees))° matched no zone")
+            return
+        }
+        logInfo("Shake matched zone: \(zone.name)")
+        executeGestureAction(zone.action)
+    }
+
+    /// Apply gesture detector parameters from settings to the live detector instances.
+    func applyGestureDetectorParams() {
+        shakeDetector.timeWindow = settings.shakeTimeWindow
+        shakeDetector.requiredReversals = settings.shakeRequiredReversals
+        shakeDetector.minimumSegmentDisplacement = CGFloat(settings.shakeMinDisplacement)
+        shakeDetector.minimumSegmentVelocity = CGFloat(settings.shakeMinVelocity)
+        shakeDetector.cooldownDuration = settings.shakeCooldown
+        shakeDetector.maximumAngularDeviation = CGFloat(settings.shakeAngularTolerance) * .pi / 180
+
+        circleGestureDetector.circleTimeWindow = settings.circleTimeWindow
+        circleGestureDetector.sampleWindow = settings.circleSampleWindow
+        circleGestureDetector.minimumRadius = CGFloat(settings.circleMinRadius)
+        circleGestureDetector.minimumSpeed = CGFloat(settings.circleMinSpeed)
+        circleGestureDetector.cooldownDuration = settings.circleCooldown
+        circleGestureDetector.requiredCircles = settings.circleRequiredCircles
+        circleGestureDetector.maximumRadiusVariance = CGFloat(settings.circleMaxRadiusVariance)
+
+        logDebug("Gesture detector params applied from settings")
+    }
+
+    /// Persist current gesture router configuration to UserDefaults.
+    func saveGestureSettings() {
+        saveGestureConfig(zones: gestureRouter.shakeZones, circleConfig: gestureRouter.circleConfig)
+    }
+
+    /// Execute a gesture action, handling both built-in and external actions.
+    func executeGestureAction(_ action: GestureAction) {
+        gestureRouter.execute(action) { [weak self] keyCode, modifiers in
+            self?.simulateKeyPress(keyCode: keyCode, modifiers: modifiers)
+        }
+        // Handle built-in actions that need AppCore state
+        if case .toggleVisuals = action {
+            isShakeSuppressed.toggle()
+            logInfo("Gesture toggle: visuals \(isShakeSuppressed ? "OFF" : "ON")")
+            applyShakeSuppressionState()
+        }
     }
 
     func applyShakeSuppressionState() {
