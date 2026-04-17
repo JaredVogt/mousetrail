@@ -55,6 +55,13 @@ struct ShakeDetector {
 
     /// Called on every mouse event. Returns a ShakeEvent if a shake was just detected, nil otherwise.
     mutating func addSample(_ sample: MouseSample) -> ShakeEvent? {
+        // Guard against clock jumps (sleep/wake, NTP correction) — reset on backward time.
+        if let last = samples.last, sample.timestamp < last.timestamp {
+            reset()
+            samples.append(sample)
+            return nil
+        }
+
         // Append and prune old samples
         samples.append(sample)
         let cutoff = sample.timestamp - (timeWindow + 0.25)
@@ -77,7 +84,8 @@ struct ShakeDetector {
         guard samples.count >= 4 else { return nil }
 
         // Determine dominant axis from total displacement across the window
-        let dominantAxis = computeDominantAxis()
+        let dominantAxis = ShakeAxisMath.dominantAxis(from: samples)
+        guard dominantAxis.dx != 0 || dominantAxis.dy != 0 else { return nil }
         let axisAngle = atan2(dominantAxis.dy, dominantAxis.dx)
 
         // Count reversals along the dominant axis, enforcing angular coherence
@@ -110,21 +118,6 @@ struct ShakeDetector {
 
     // MARK: - Private
 
-    /// Compute a unit vector representing the dominant axis of motion.
-    /// Uses the direction with the greatest absolute displacement sum.
-    private func computeDominantAxis() -> CGVector {
-        var totalDx: CGFloat = 0
-        var totalDy: CGFloat = 0
-        for i in 1..<samples.count {
-            totalDx += abs(samples[i].location.x - samples[i - 1].location.x)
-            totalDy += abs(samples[i].location.y - samples[i - 1].location.y)
-        }
-        // Normalize to unit vector along the dominant direction
-        let magnitude = sqrt(totalDx * totalDx + totalDy * totalDy)
-        guard magnitude > 0 else { return CGVector(dx: 1, dy: 0) }
-        return CGVector(dx: totalDx / magnitude, dy: totalDy / magnitude)
-    }
-
     private struct ReversalResult {
         let reversals: Int
         let averageVelocity: CGFloat
@@ -134,57 +127,7 @@ struct ShakeDetector {
     /// Count direction reversals when movement is projected onto the given axis,
     /// rejecting segments that deviate too far from the axis angle.
     private func countReversals(along axis: CGVector, axisAngle: CGFloat) -> ReversalResult {
-        // Build segments: contiguous runs of movement in the same direction on the projected axis
-        struct Segment {
-            var startTimestamp: TimeInterval
-            var endTimestamp: TimeInterval
-            var projectedDisplacement: CGFloat // signed
-            var rawDx: CGFloat  // total raw dx for this segment
-            var rawDy: CGFloat  // total raw dy for this segment
-        }
-
-        var segments: [Segment] = []
-        var currentSegment: Segment?
-
-        for i in 1..<samples.count {
-            let dx = samples[i].location.x - samples[i - 1].location.x
-            let dy = samples[i].location.y - samples[i - 1].location.y
-            // Project delta onto dominant axis
-            let projectedDelta = dx * axis.dx + dy * axis.dy
-
-            if projectedDelta == 0 { continue }
-
-            if var seg = currentSegment {
-                let sameDirection = (projectedDelta > 0) == (seg.projectedDisplacement > 0)
-                if sameDirection {
-                    seg.projectedDisplacement += projectedDelta
-                    seg.rawDx += dx
-                    seg.rawDy += dy
-                    seg.endTimestamp = samples[i].timestamp
-                    currentSegment = seg
-                } else {
-                    segments.append(seg)
-                    currentSegment = Segment(
-                        startTimestamp: samples[i - 1].timestamp,
-                        endTimestamp: samples[i].timestamp,
-                        projectedDisplacement: projectedDelta,
-                        rawDx: dx,
-                        rawDy: dy
-                    )
-                }
-            } else {
-                currentSegment = Segment(
-                    startTimestamp: samples[i - 1].timestamp,
-                    endTimestamp: samples[i].timestamp,
-                    projectedDisplacement: projectedDelta,
-                    rawDx: dx,
-                    rawDy: dy
-                )
-            }
-        }
-        if let seg = currentSegment {
-            segments.append(seg)
-        }
+        let segments = ShakeAxisMath.buildSegments(from: samples, axis: axis)
 
         // Count reversals: direction changes between consecutive segments
         // that meet displacement, velocity, and angular coherence thresholds
@@ -192,7 +135,8 @@ struct ShakeDetector {
         var reversals = 0
         var velocitySum: CGFloat = 0
         var velocityCount = 0
-        var angularDeviations: [CGFloat] = []
+        var angularDeviationSum: CGFloat = 0
+        var angularDeviationCount = 0
         let now = samples.last?.timestamp ?? 0
         let windowStart = now - timeWindow
 
@@ -225,7 +169,8 @@ struct ShakeDetector {
             if angleDiff < -.pi / 2 { angleDiff += .pi }
             let absDeviation = abs(angleDiff)
             guard absDeviation <= maximumAngularDeviation else { continue }
-            angularDeviations.append(absDeviation)
+            angularDeviationSum += absDeviation
+            angularDeviationCount += 1
 
             // Direction must have actually reversed
             let reversed = (prev.projectedDisplacement > 0) != (curr.projectedDisplacement > 0)
@@ -237,7 +182,7 @@ struct ShakeDetector {
         }
 
         let avgVelocity = velocityCount > 0 ? velocitySum / CGFloat(velocityCount) : 0
-        let avgSpread = angularDeviations.isEmpty ? 0 : angularDeviations.reduce(0, +) / CGFloat(angularDeviations.count)
+        let avgSpread = angularDeviationCount > 0 ? angularDeviationSum / CGFloat(angularDeviationCount) : 0
 
         return ReversalResult(reversals: reversals, averageVelocity: avgVelocity, angularSpread: avgSpread)
     }

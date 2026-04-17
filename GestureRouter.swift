@@ -212,11 +212,16 @@ struct GestureRouter {
             simulateKeyPress(keyCode, flags)
             return true
         case .runShellCommand(let command):
+            logInfo("Gesture-triggered shell command: \(command)")
             Task.detached {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
                 process.arguments = ["bash", "-c", command]
-                try? process.run()
+                do {
+                    try process.run()
+                } catch {
+                    logInfo("Gesture shell command failed: \(error.localizedDescription)")
+                }
             }
             return true
         }

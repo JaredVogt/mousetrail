@@ -221,8 +221,36 @@ class TrailSettings {
 
     private var isSuppressingCallbacks = false
 
+    /// Debounce window for UserDefaults writes. Rapid didSet firing (e.g. slider drag)
+    /// coalesces into a single write after this interval of quiet.
+    private static let saveDebounceInterval: TimeInterval = 0.3
+
+    private var pendingSaveWork: DispatchWorkItem?
+
+    /// Public save — debounces to one UserDefaults write per ~300ms of settling.
+    /// Callbacks (`onChanged`, etc.) still fire immediately from each `didSet`
+    /// so UI preview stays live.
     func save() {
         guard !isSuppressingCallbacks else { return }
+        pendingSaveWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.writeToDefaultsNow()
+        }
+        pendingSaveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.saveDebounceInterval, execute: work)
+    }
+
+    /// Force any pending debounced write to complete synchronously. Call before app quit.
+    func flushPendingSave() {
+        guard let work = pendingSaveWork else { return }
+        work.cancel()
+        pendingSaveWork = nil
+        writeToDefaultsNow()
+    }
+
+    /// Synchronous write — invoked by the debounce timer or `flushPendingSave`.
+    private func writeToDefaultsNow() {
+        pendingSaveWork = nil
         let d = UserDefaults.standard
         d.set(maxWidth, forKey: Keys.maxWidth)
         d.set(glowWidthMultiplier, forKey: Keys.glowWidthMultiplier)

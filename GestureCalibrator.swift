@@ -31,70 +31,16 @@ struct GestureCalibrator {
     static let pauseThreshold: TimeInterval = 0.75
 
     /// Analyze a recorded sequence of mouse samples as a shake gesture.
-    /// Uses the same segment-building logic as ShakeDetector.
+    /// Reuses `ShakeAxisMath` for axis + segment extraction so this stays in lockstep
+    /// with the live detector.
     static func analyzeShake(samples: [MouseSample]) -> ShakeCalibrationResult? {
         guard samples.count >= minimumSamples else { return nil }
 
-        // Compute dominant axis from total displacement
-        var totalDx: CGFloat = 0
-        var totalDy: CGFloat = 0
-        for i in 1..<samples.count {
-            totalDx += abs(samples[i].location.x - samples[i - 1].location.x)
-            totalDy += abs(samples[i].location.y - samples[i - 1].location.y)
-        }
-        let magnitude = sqrt(totalDx * totalDx + totalDy * totalDy)
-        guard magnitude > 0 else { return nil }
-        let axisDx = totalDx / magnitude
-        let axisDy = totalDy / magnitude
-        let axisAngle = atan2(axisDy, axisDx)
+        let axis = ShakeAxisMath.dominantAxis(from: samples)
+        guard axis.dx != 0 || axis.dy != 0 else { return nil }
+        let axisAngle = atan2(axis.dy, axis.dx)
 
-        // Build segments (same logic as ShakeDetector)
-        struct Segment {
-            var startTimestamp: TimeInterval
-            var endTimestamp: TimeInterval
-            var projectedDisplacement: CGFloat
-            var rawDx: CGFloat
-            var rawDy: CGFloat
-        }
-
-        var segments: [Segment] = []
-        var currentSegment: Segment?
-
-        for i in 1..<samples.count {
-            let dx = samples[i].location.x - samples[i - 1].location.x
-            let dy = samples[i].location.y - samples[i - 1].location.y
-            let projectedDelta = dx * axisDx + dy * axisDy
-            if projectedDelta == 0 { continue }
-
-            if var seg = currentSegment {
-                let sameDirection = (projectedDelta > 0) == (seg.projectedDisplacement > 0)
-                if sameDirection {
-                    seg.projectedDisplacement += projectedDelta
-                    seg.rawDx += dx
-                    seg.rawDy += dy
-                    seg.endTimestamp = samples[i].timestamp
-                    currentSegment = seg
-                } else {
-                    segments.append(seg)
-                    currentSegment = Segment(
-                        startTimestamp: samples[i - 1].timestamp,
-                        endTimestamp: samples[i].timestamp,
-                        projectedDisplacement: projectedDelta,
-                        rawDx: dx,
-                        rawDy: dy
-                    )
-                }
-            } else {
-                currentSegment = Segment(
-                    startTimestamp: samples[i - 1].timestamp,
-                    endTimestamp: samples[i].timestamp,
-                    projectedDisplacement: projectedDelta,
-                    rawDx: dx,
-                    rawDy: dy
-                )
-            }
-        }
-        if let seg = currentSegment { segments.append(seg) }
+        let segments = ShakeAxisMath.buildSegments(from: samples, axis: axis)
 
         // Need at least 2 segments to have a reversal
         guard segments.count >= 2 else { return nil }

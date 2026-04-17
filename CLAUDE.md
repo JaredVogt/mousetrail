@@ -4,82 +4,89 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-This is a single-file macOS application written in Swift that creates an overlay displaying mouse coordinates, system information, and features a hardware-accelerated glowing trail that follows the mouse cursor with smooth Catmull-Rom spline interpolation.
+MouseTrail is a macOS menu bar overlay application (SwiftUI `MenuBarExtra` + AppKit) that renders:
+- A hardware-accelerated glowing cursor trail (Catmull-Rom spline + multi-layer CAShapeLayer glow)
+- Optional ripple effects on click (Core Image + Metal kernel `RippleKernel.ci.metal`)
+- A configurable crosshair
+- Gesture detection (shake, circle, hyper+circle) that can trigger key presses, shell commands, or visual toggles
+- A live info panel showing cursor coordinates and active display
+
+The app runs as `LSUIElement` with a menu bar icon; no Dock icon. Trail windows are created per-`NSScreen` so the effect spans every connected display.
 
 ## Build Commands
 
 ```bash
-# Primary build command - creates .app bundle
+# Primary build — compiles Metal kernel, builds bundle, codesigns, installs to /Applications, relaunches.
 ./build-working.sh
-
-# Manual compilation (without app bundle)
-swiftc main.swift -o MouseTrail
-
-# Run the application
-./MouseTrail.app/Contents/MacOS/MouseTrail
-
-# Run in background (Terminal closes automatically)
-./MouseTrail & disown
 ```
 
-## Architecture
+**Important:** per user memory, always kill the running MouseTrail and relaunch after building. `build-working.sh` does this automatically (`pkill -x MouseTrail` → `open /Applications/MouseTrail.app`).
 
-The application consists of a single `main.swift` file with three main classes:
+## File Layout
 
-1. **TrailView**: A hardware-accelerated view that renders a smooth, glowing mouse trail using CAShapeLayer and Catmull-Rom spline interpolation. Features multi-layer glow effects and time-based fading.
+13 Swift files (~6,400 lines total):
 
-2. **SelectiveClickPanel**: A custom NSPanel that implements selective mouse interaction using NSTrackingArea. It ignores mouse events except when hovering over the close button or when Command key is held for dragging.
+- `MouseTrailApp.swift` — `@main` SwiftUI entry, wires menu bar + AppDelegate
+- `AppCore.swift` — **largest file**; contains `AppDelegate`, `TrailView` (CAShapeLayer trail renderer), `RippleEffect`, `RippleManager`, `LogFileViewer`, global event monitors, animation driver (CADisplayLink + Timer fallback)
+- `TrailSettings.swift` — `@Observable` settings model, UserDefaults persistence
+- `MenuBarSettingsView.swift` — SwiftUI settings panel (monolithic — refactor candidate)
+- `HelpView.swift` — Help window with README viewer (WKWebView)
+- `PresetManager.swift` + `TrailPreset.swift` — Codable preset persistence in `~/Library/Application Support/MouseTrail/`
+- `LiveInfoModel.swift` — Live system info (cursor position, active display)
+- `LaunchAtLoginService.swift` — ServiceManagement wrapper
+- Gesture subsystem: `ShakeDetector.swift`, `CircleGestureDetector.swift`, `GestureCalibrator.swift`, `GestureRouter.swift`
 
-3. **AppDelegate**: Manages the info panel window and multiple trail windows (one per screen), global event monitoring for mouse/keyboard events, and a 60 FPS timer for smooth animations.
+Non-Swift:
+- `Info.plist`, `entitlements.plist`
+- `RippleKernel.ci.metal` — Core Image kernel for ripple distortion
+- `README.md`, `ARCHITECTURE.md`, `todos.md`, `znote.md`
 
-Key architectural decisions:
-- Single-file architecture for simplicity
-- Runs as LSUIElement (no Dock icon)
-- Uses global event monitors that don't require special permissions
-- Hardware-accelerated trail rendering with Core Animation
-- Separate trail windows for each screen for optimal multi-monitor support
-- Windows configured with `.floating` level and `.canJoinAllSpaces` behavior
+## Architecture Notes
 
-## Important Implementation Details
+### Animation pipeline
+- `TrailView` renders trail segments using `CAShapeLayer` with multi-layer glow (outer / middle / inner × core + glow stack).
+- `AppDelegate` runs either a `CADisplayLink` (macOS 14+, vsync-synchronized via `displayWindow.displayLink(...)`) or a 60 Hz `Timer` fallback.
+- Per-screen trail windows are re-computed on `NSApplication.didChangeScreenParametersNotification`.
 
-### Window Behavior
-- Info panel starts at current mouse position
-- Windows are click-through except for close button
-- Hold Command (⌘) to enable dragging (border turns yellow)
-- All windows appear on all spaces and over full-screen apps
-- Trail windows automatically created for each connected display
+### Event monitoring
+- `NSEvent.addGlobalMonitorForEvents` only — local monitors intentionally omitted since the app has no key window in normal use and local monitors would double-feed gesture detectors.
+- Events monitored: `.mouseMoved`, `.leftMouseDragged`, `.leftMouseDown`, `.leftMouseUp`, `.flagsChanged`.
 
-### Trail Animation System
-- Smooth, glowing trail using Catmull-Rom spline interpolation
-- Triple-layer rendering: outer glow, middle glow, and bright core
-- Time-based fading with configurable fade duration (0.6s default)
-- Hardware acceleration via CAShapeLayer for optimal performance
-- Updates at 60 FPS via Timer for smooth movement
-- Separate trail window per screen for seamless multi-monitor support
-- Automatic recreation of trail windows when monitor configuration changes
+### Gesture system
+- `MouseSample` (`AppCore.swift`) is fed to both `ShakeDetector` and `CircleGestureDetector` on every mouse event.
+- Detectors are `struct`s with `mutating func addSample(...) -> Event?`; they own a pruned sample buffer and their own cooldown.
+- Detected events route through `GestureRouter` to produce a `GestureAction` (none / toggleVisuals / simulateKeyPress / runShellCommand).
+- `hyper+circle` is a special case: when circle fires while hyperkeys are held, the event is queued until hyper release.
 
-### Event Monitoring
-- Uses both global and local event monitors for reliability
-- Global monitors: mouse movement and keyboard modifiers
-- Local monitor: keyboard modifiers when app has focus
-- Workspace notifications for app switching detection
+### Logging
+- `logInfo(...)` / `logDebug(...)` in `AppCore.swift` with `@autoclosure` strings so interpolated messages are skipped when the level is gated out.
+- Log level configurable at runtime via settings (`.off / .info / .debug`).
+- File-backed via `LogFileViewer`; viewable in-app.
 
-## Testing Considerations
+## Permissions Required
 
-When testing changes:
-1. Verify info panel and trail windows appear correctly
-2. Test Command-drag functionality
-3. Ensure trail renders smoothly with glow effect
-4. Check that close button remains clickable
-5. Verify app runs without Dock icon
-6. Test trail continuity across multiple displays
-7. Verify trail appears on all connected monitors
+The app requires the user to grant these macOS permissions (status shown via banner in the settings panel):
 
-## Known Behaviors
+- **Accessibility** — required for `CGEvent`-based hotkey simulation (circle gesture → keystroke)
+- **Screen Recording** — required for the ripple effect, which samples screen pixels via `ScreenCaptureKit`
 
-- Terminal window opens when double-clicking .app (expected for CLI tools)
-- App requires no special permissions (uses public APIs only)
-- Memory usage should remain constant (~15-20MB)
-- CPU usage minimal due to efficient Core Animation rendering
-- Trail automatically scales to any number of connected displays
-- Dynamic monitor detection - no restart required when connecting/disconnecting displays
+The app does NOT require permissions for basic trail rendering or gesture detection from mouse movement.
+
+## Testing Checklist
+
+When making changes:
+1. Trail renders smoothly on primary + secondary monitor
+2. Ripple effect triggers on click (with Screen Recording granted)
+3. Shake + circle + hyper+circle gestures fire their configured actions
+4. Settings panel sliders remain responsive; no UI storms
+5. Close buttons still clickable; Command-drag still works
+6. Menu bar icon and MenuBarExtra window open without delay
+7. App relaunches cleanly after `./build-working.sh`
+
+## Known Refactor Candidates
+
+See `/Users/jaredvogt/.claude/plans/ok-we-are-on-delightful-perlis.md` for a full list. High-priority:
+- Split `AppCore.swift` into per-class files (`AppDelegate.swift`, `TrailView.swift`, `Ripple.swift`, `LogFileViewer.swift`) — mechanical, no logic change
+- Extract `MenuBarSettingsView` sections into subviews
+- Introduce `EventMonitorHub`, `GestureDetector` protocol + ring buffer
+- Debounce `TrailSettings.save()` to reduce slider-drag UserDefaults churn

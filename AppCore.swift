@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-16 18:09:40"
+let BUILD_TIMESTAMP = "2026-04-16 23:51:08"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -157,24 +157,24 @@ class TrailView: NSView {
     var minimumVelocity: CGFloat = 0.0  // pixels per second (default to 0 for immediate trail)
     
     /// Layers for core trail effect
-    private var coreOuterLayer: CAShapeLayer!
-    private var coreMiddleLayer: CAShapeLayer!
-    private var coreInnerLayer: CAShapeLayer!
-    private var gradientMaskLayer: CAGradientLayer!
-    
+    private let coreOuterLayer = CAShapeLayer()
+    private let coreMiddleLayer = CAShapeLayer()
+    private let coreInnerLayer = CAShapeLayer()
+    private let gradientMaskLayer = CAGradientLayer()
+
     /// Layers for glow trail effect
-    private var glowOuterLayer: CAShapeLayer!
-    private var glowMiddleLayer: CAShapeLayer!
-    private var glowInnerLayer: CAShapeLayer!
+    private let glowOuterLayer = CAShapeLayer()
+    private let glowMiddleLayer = CAShapeLayer()
+    private let glowInnerLayer = CAShapeLayer()
 
     /// Crosshair layers
-    private var crosshairVerticalLayer: CAShapeLayer!
-    private var crosshairHorizontalLayer: CAShapeLayer!
+    private let crosshairVerticalLayer = CAShapeLayer()
+    private let crosshairHorizontalLayer = CAShapeLayer()
     private var lastCrosshairPoint: NSPoint?
     var isCrosshairVisible = false {
         didSet {
-            crosshairVerticalLayer?.isHidden = !isCrosshairVisible
-            crosshairHorizontalLayer?.isHidden = !isCrosshairVisible
+            crosshairVerticalLayer.isHidden = !isCrosshairVisible
+            crosshairHorizontalLayer.isHidden = !isCrosshairVisible
             if !isCrosshairVisible { lastCrosshairPoint = nil }
         }
     }
@@ -202,7 +202,6 @@ class TrailView: NSView {
         layer?.masksToBounds = false
         
         // Outer glow layer (widest, most transparent)
-        coreOuterLayer = CAShapeLayer()
         coreOuterLayer.fillColor = nil
         coreOuterLayer.strokeColor = coreColor.withAlphaComponent(0.08).cgColor
         coreOuterLayer.lineWidth = maxWidth * 3.0
@@ -218,7 +217,6 @@ class TrailView: NSView {
         coreOuterLayer.rasterizationScale = 2.0 // Retina quality
         
         // Middle glow layer
-        coreMiddleLayer = CAShapeLayer()
         coreMiddleLayer.fillColor = nil
         coreMiddleLayer.strokeColor = coreColor.withAlphaComponent(0.25).cgColor
         coreMiddleLayer.lineWidth = maxWidth * 1.8
@@ -234,7 +232,6 @@ class TrailView: NSView {
         coreMiddleLayer.rasterizationScale = 2.0
         
         // Core layer (brightest, thinnest)
-        coreInnerLayer = CAShapeLayer()
         coreInnerLayer.fillColor = nil
         coreInnerLayer.strokeColor = NSColor.white.withAlphaComponent(0.95).cgColor
         coreInnerLayer.lineWidth = maxWidth * 0.3
@@ -250,7 +247,6 @@ class TrailView: NSView {
         coreInnerLayer.rasterizationScale = 2.0
         
         // Glow outer layer (widest overall) - steeper opacity falloff
-        glowOuterLayer = CAShapeLayer()
         glowOuterLayer.fillColor = nil
         glowOuterLayer.strokeColor = glowColor.withAlphaComponent(glowOuterOpacity).cgColor
         glowOuterLayer.lineWidth = maxWidth * 3.0 * glowWidthMultiplier
@@ -266,7 +262,6 @@ class TrailView: NSView {
         glowOuterLayer.rasterizationScale = 2.0
         
         // Glow middle layer - steeper opacity
-        glowMiddleLayer = CAShapeLayer()
         glowMiddleLayer.fillColor = nil
         glowMiddleLayer.strokeColor = glowColor.withAlphaComponent(glowMiddleOpacity).cgColor
         glowMiddleLayer.lineWidth = maxWidth * 1.8 * glowWidthMultiplier
@@ -282,7 +277,6 @@ class TrailView: NSView {
         glowMiddleLayer.rasterizationScale = 2.0
         
         // Glow inner layer
-        glowInnerLayer = CAShapeLayer()
         glowInnerLayer.fillColor = nil
         glowInnerLayer.strokeColor = NSColor(red: 0.7, green: 0.85, blue: 1.0, alpha: 0.9).cgColor
         glowInnerLayer.lineWidth = maxWidth * 0.4 * glowWidthMultiplier
@@ -311,7 +305,6 @@ class TrailView: NSView {
         trailContainer.addSublayer(glowInnerLayer)
         
         // Setup gradient mask for smooth fading
-        gradientMaskLayer = CAGradientLayer()
         gradientMaskLayer.frame = bounds
         gradientMaskLayer.startPoint = CGPoint(x: 0, y: 0.5)
         gradientMaskLayer.endPoint = CGPoint(x: 1, y: 0.5)
@@ -326,12 +319,10 @@ class TrailView: NSView {
         layer?.addSublayer(trailContainer)
 
         // Crosshair layers — lines spanning full screen
-        crosshairVerticalLayer = CAShapeLayer()
         crosshairVerticalLayer.fillColor = nil
         crosshairVerticalLayer.frame = bounds
         crosshairVerticalLayer.isHidden = true
 
-        crosshairHorizontalLayer = CAShapeLayer()
         crosshairHorizontalLayer.fillColor = nil
         crosshairHorizontalLayer.frame = bounds
         crosshairHorizontalLayer.isHidden = true
@@ -351,15 +342,15 @@ class TrailView: NSView {
     override var frame: NSRect {
         didSet {
             // Update all layer frames when view frame changes
-            coreOuterLayer?.frame = bounds
-            coreMiddleLayer?.frame = bounds
-            coreInnerLayer?.frame = bounds
-            glowOuterLayer?.frame = bounds
-            glowMiddleLayer?.frame = bounds
-            glowInnerLayer?.frame = bounds
-            gradientMaskLayer?.frame = bounds
-            crosshairVerticalLayer?.frame = bounds
-            crosshairHorizontalLayer?.frame = bounds
+            coreOuterLayer.frame = bounds
+            coreMiddleLayer.frame = bounds
+            coreInnerLayer.frame = bounds
+            glowOuterLayer.frame = bounds
+            glowMiddleLayer.frame = bounds
+            glowInnerLayer.frame = bounds
+            gradientMaskLayer.frame = bounds
+            crosshairVerticalLayer.frame = bounds
+            crosshairHorizontalLayer.frame = bounds
         }
     }
     
@@ -551,8 +542,8 @@ class TrailView: NSView {
     }
 
     private func updateLayerVisibility() {
-        coreOuterLayer?.isHidden = usesReducedLayerStack
-        glowOuterLayer?.isHidden = usesReducedLayerStack
+        coreOuterLayer.isHidden = usesReducedLayerStack
+        glowOuterLayer.isHidden = usesReducedLayerStack
 
         if usesReducedLayerStack {
             clearTrailLayers([coreOuterLayer, glowOuterLayer].compactMap { $0 })
@@ -683,21 +674,21 @@ class TrailView: NSView {
     /// Update layer colors and properties when values change
     func updateLayerProperties() {
         // Update core trail color
-        coreOuterLayer?.strokeColor = coreColor.withAlphaComponent(0.08).cgColor
-        coreOuterLayer?.shadowColor = coreColor.cgColor
-        coreMiddleLayer?.strokeColor = coreColor.withAlphaComponent(0.2).cgColor
-        coreMiddleLayer?.shadowColor = coreColor.cgColor
-        coreInnerLayer?.strokeColor = coreColor.withAlphaComponent(0.9).cgColor
-        coreInnerLayer?.shadowColor = coreColor.cgColor
-        
+        coreOuterLayer.strokeColor = coreColor.withAlphaComponent(0.08).cgColor
+        coreOuterLayer.shadowColor = coreColor.cgColor
+        coreMiddleLayer.strokeColor = coreColor.withAlphaComponent(0.2).cgColor
+        coreMiddleLayer.shadowColor = coreColor.cgColor
+        coreInnerLayer.strokeColor = coreColor.withAlphaComponent(0.9).cgColor
+        coreInnerLayer.shadowColor = coreColor.cgColor
+
         // Update glow trail color and opacity
-        glowOuterLayer?.strokeColor = glowColor.withAlphaComponent(glowOuterOpacity).cgColor
-        glowOuterLayer?.shadowColor = glowColor.cgColor
-        glowMiddleLayer?.strokeColor = glowColor.withAlphaComponent(glowMiddleOpacity).cgColor
-        glowMiddleLayer?.shadowColor = glowColor.cgColor
-        glowInnerLayer?.strokeColor = NSColor(red: 0.7 * glowColor.redComponent, 
-                                           green: 0.85 * glowColor.greenComponent, 
-                                           blue: glowColor.blueComponent, 
+        glowOuterLayer.strokeColor = glowColor.withAlphaComponent(glowOuterOpacity).cgColor
+        glowOuterLayer.shadowColor = glowColor.cgColor
+        glowMiddleLayer.strokeColor = glowColor.withAlphaComponent(glowMiddleOpacity).cgColor
+        glowMiddleLayer.shadowColor = glowColor.cgColor
+        glowInnerLayer.strokeColor = NSColor(red: 0.7 * glowColor.redComponent,
+                                           green: 0.85 * glowColor.greenComponent,
+                                           blue: glowColor.blueComponent,
                                            alpha: 0.9).cgColor
     }
     
@@ -795,10 +786,10 @@ class TrailView: NSView {
     func applyCrosshairStyle(color: NSColor, lineWidth: CGFloat) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        crosshairVerticalLayer?.strokeColor = color.cgColor
-        crosshairVerticalLayer?.lineWidth = lineWidth
-        crosshairHorizontalLayer?.strokeColor = color.cgColor
-        crosshairHorizontalLayer?.lineWidth = lineWidth
+        crosshairVerticalLayer.strokeColor = color.cgColor
+        crosshairVerticalLayer.lineWidth = lineWidth
+        crosshairHorizontalLayer.strokeColor = color.cgColor
+        crosshairHorizontalLayer.lineWidth = lineWidth
         CATransaction.commit()
     }
 
@@ -806,8 +797,8 @@ class TrailView: NSView {
     func clearCrosshair() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        crosshairVerticalLayer?.path = nil
-        crosshairHorizontalLayer?.path = nil
+        crosshairVerticalLayer.path = nil
+        crosshairHorizontalLayer.path = nil
         CATransaction.commit()
         lastCrosshairPoint = nil
     }
@@ -1238,26 +1229,34 @@ enum LogLevel: Int, Comparable, CaseIterable {
 /// Current log level — controlled via settings
 var currentLogLevel: LogLevel = .info
 
-/// Log at info level — high-level state changes, gesture detections, initialization
-func logInfo(_ message: String) {
-    writeLog(message, level: .info)
+/// Cached date formatter — avoids per-log allocation.
+private let logTimestampFormatter: DateFormatter = {
+    let df = DateFormatter()
+    df.dateFormat = "HH:mm:ss"
+    return df
+}()
+
+/// Log at info level — high-level state changes, gesture detections, initialization.
+/// @autoclosure lets the caller's string interpolation be skipped entirely when gated out.
+func logInfo(_ message: @autoclosure () -> String) {
+    guard LogLevel.info <= currentLogLevel else { return }
+    writeLog(message(), level: .info)
 }
 
-/// Log at debug level — verbose coordinate dumps, rect calculations, capture details
-func logDebug(_ message: String) {
-    writeLog(message, level: .debug)
+/// Log at debug level — verbose coordinate dumps, rect calculations, capture details.
+func logDebug(_ message: @autoclosure () -> String) {
+    guard LogLevel.debug <= currentLogLevel else { return }
+    writeLog(message(), level: .debug)
 }
 
 /// Legacy function — routes to logDebug for backward compatibility
-func debugLog(_ message: String) {
-    writeLog(message, level: .debug)
+func debugLog(_ message: @autoclosure () -> String) {
+    guard LogLevel.debug <= currentLogLevel else { return }
+    writeLog(message(), level: .debug)
 }
 
 private func writeLog(_ message: String, level: LogLevel) {
-    guard level <= currentLogLevel else { return }
-    let df = DateFormatter()
-    df.dateFormat = "HH:mm:ss"
-    let line = "[\(df.string(from: Date()))] \(level.prefix) \(message)"
+    let line = "[\(logTimestampFormatter.string(from: Date()))] \(level.prefix) \(message)"
     print(line)
     let fileLine = line + "\n"
     let logPath = LogFileViewer.logPath
@@ -2160,22 +2159,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let cutoff = now - rawMouseSampleHistoryDuration
         guard rawMouseSamples.count > 2 else { return }
 
-        if performanceExperimentConfig.useLinearSmoothPlaybackLookup {
-            var pruneCount = 0
-            while pruneCount + 1 < rawMouseSamples.count,
-                  rawMouseSamples[pruneCount + 1].timestamp < cutoff {
-                pruneCount += 1
-            }
-
-            if pruneCount > 0 {
-                rawMouseSamples.removeFirst(pruneCount)
-                smoothPlaybackSearchIndex = max(0, smoothPlaybackSearchIndex - pruneCount)
-            }
-            return
+        var pruneCount = 0
+        while pruneCount + 1 < rawMouseSamples.count,
+              rawMouseSamples[pruneCount + 1].timestamp < cutoff {
+            pruneCount += 1
         }
 
-        while rawMouseSamples.count > 2 && rawMouseSamples[1].timestamp < cutoff {
-            rawMouseSamples.removeFirst()
+        guard pruneCount > 0 else { return }
+        rawMouseSamples.removeFirst(pruneCount)
+        if performanceExperimentConfig.useLinearSmoothPlaybackLookup {
+            smoothPlaybackSearchIndex = max(0, smoothPlaybackSearchIndex - pruneCount)
         }
     }
 
@@ -2249,9 +2242,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             var nextDirtyIndices: Set<Int> = []
-            let validIndices = dirtyTrailViewIndices.sorted().filter { $0 < trailViews.count }
-
-            for index in validIndices {
+            for index in dirtyTrailViewIndices where index < trailViews.count {
                 let trailView = trailViews[index]
                 trailView.updateTrail(at: now)
                 if trailView.hasVisiblePoints(at: now) {
@@ -2401,15 +2392,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) {
             eventMonitors.append(movementMonitor)
         }
-        if let movementLocalMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: movementMask,
-            handler: { [weak self] event in
-                self?.handleMouseMovement(event)
-                return event
-            }
-        ) {
-            eventMonitors.append(movementLocalMonitor)
-        }
 
         // Monitor mouse clicks for ripple effect in both active and inactive states.
         if let clickMonitor = NSEvent.addGlobalMonitorForEvents(
@@ -2419,15 +2401,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         ) {
             eventMonitors.append(clickMonitor)
-        }
-        if let clickLocalMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: .leftMouseDown,
-            handler: { [weak self] event in
-                self?.handleMouseClick(event)
-                return event
-            }
-        ) {
-            eventMonitors.append(clickLocalMonitor)
         }
 
         // Monitor left mouse up for click-drag classification
@@ -2439,15 +2412,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) {
             eventMonitors.append(mouseUpMonitor)
         }
-        if let mouseUpLocalMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: .leftMouseUp,
-            handler: { [weak self] event in
-                self?.handleMouseUp(event)
-                return event
-            }
-        ) {
-            eventMonitors.append(mouseUpLocalMonitor)
-        }
 
         // Monitor modifier key changes for hyper+circle release detection
         if let flagsGlobalMonitor = NSEvent.addGlobalMonitorForEvents(
@@ -2458,15 +2422,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) {
             eventMonitors.append(flagsGlobalMonitor)
         }
-        if let flagsLocalMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: .flagsChanged,
-            handler: { [weak self] event in
-                self?.handleFlagsChanged(event)
-                return event
-            }
-        ) {
-            eventMonitors.append(flagsLocalMonitor)
-        }
+        // NOTE: local monitors intentionally omitted — the app has no key window in
+        // normal use (LSUIElement menu bar app), so local monitors would only fire
+        // when the settings/help window is keyed, and they'd double-feed gesture
+        // detectors when they do. Global monitor alone covers our needs.
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -2692,7 +2651,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if let timer = updateTimer {
-            timer.tolerance = 0.001
+            timer.tolerance = 1.0 / 120.0  // half a frame at 60Hz — lets the OS batch wakeups
             RunLoop.current.add(timer, forMode: .common)
         }
     }
@@ -3042,6 +3001,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      * is good practice and prevents potential issues.
      */
     func applicationWillTerminate(_ notification: Notification) {
+        settings.flushPendingSave()
         stopAnimationDriver()
         infoUpdateTimer?.invalidate()
         infoUpdateTimer = nil

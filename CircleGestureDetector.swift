@@ -54,6 +54,11 @@ struct CircleGestureDetector {
     private var samples: [MouseSample] = []
     private let maxSamples = 256
 
+    /// Running centroid accumulators — updated incrementally as samples are added/pruned
+    /// to avoid re-scanning the whole sample array on every mouse event.
+    private var sumX: CGFloat = 0
+    private var sumY: CGFloat = 0
+
     /// Cumulative angular displacement for the current circle
     private var cumulativeAngle: Double = 0.0
 
@@ -77,18 +82,27 @@ struct CircleGestureDetector {
 
     /// Called on every mouse event. Returns a CircleEvent if the circle gesture was just detected.
     mutating func addSample(_ sample: MouseSample) -> CircleEvent? {
+        // Guard against clock jumps (sleep/wake, NTP correction) — reset on backward time.
+        if let last = samples.last, sample.timestamp < last.timestamp {
+            reset()
+            appendWithRunningSum(sample)
+            return nil
+        }
+
         // Append and prune old samples
-        samples.append(sample)
+        appendWithRunningSum(sample)
         let cutoff = sample.timestamp - (sampleWindow + 0.25)
         if let firstValid = samples.firstIndex(where: { $0.timestamp >= cutoff }) {
-            if firstValid > 0 { samples.removeFirst(firstValid) }
+            if firstValid > 0 { removeFirstWithRunningSum(firstValid) }
         } else {
             samples.removeAll()
+            sumX = 0
+            sumY = 0
             resetAngleTracking()
             return nil
         }
         if samples.count > maxSamples {
-            samples.removeFirst(samples.count - maxSamples)
+            removeFirstWithRunningSum(samples.count - maxSamples)
         }
 
         // Cooldown check
@@ -190,12 +204,29 @@ struct CircleGestureDetector {
     /// Reset all state
     mutating func reset() {
         samples.removeAll()
+        sumX = 0
+        sumY = 0
         resetAngleTracking()
         circleTimestamps.removeAll()
         lastDetectionTimestamp = 0
     }
 
     // MARK: - Private
+
+    private mutating func appendWithRunningSum(_ sample: MouseSample) {
+        samples.append(sample)
+        sumX += sample.location.x
+        sumY += sample.location.y
+    }
+
+    private mutating func removeFirstWithRunningSum(_ k: Int) {
+        guard k > 0, k <= samples.count else { return }
+        for i in 0..<k {
+            sumX -= samples[i].location.x
+            sumY -= samples[i].location.y
+        }
+        samples.removeFirst(k)
+    }
 
     private mutating func resetAngleTracking() {
         cumulativeAngle = 0
@@ -206,12 +237,7 @@ struct CircleGestureDetector {
     }
 
     private func computeCentroid() -> NSPoint {
-        var sumX: CGFloat = 0
-        var sumY: CGFloat = 0
-        for sample in samples {
-            sumX += sample.location.x
-            sumY += sample.location.y
-        }
+        guard !samples.isEmpty else { return .zero }
         let count = CGFloat(samples.count)
         return NSPoint(x: sumX / count, y: sumY / count)
     }

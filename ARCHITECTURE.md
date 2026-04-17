@@ -1,417 +1,152 @@
 # MouseTrail Architecture
 
-This document provides a detailed technical overview of the MouseTrail, explaining its architecture, design patterns, and implementation details. This app serves as an example of modern macOS development using Swift and Cocoa.
+Technical overview of the MouseTrail app: a macOS menu-bar overlay that renders a glowing cursor trail, click ripples, a crosshair, and gesture-triggered actions.
 
 ## Table of Contents
 1. [Overview](#overview)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
-4. [Technical Concepts](#technical-concepts)
-5. [Code Walkthrough](#code-walkthrough)
-6. [Event Flow](#event-flow)
-7. [Extension Ideas](#extension-ideas)
+4. [Data Flow](#data-flow)
+5. [Event Pipeline](#event-pipeline)
+6. [Rendering Pipeline](#rendering-pipeline)
+7. [Gesture Pipeline](#gesture-pipeline)
+8. [Settings & Persistence](#settings--persistence)
+9. [Known Refactor Candidates](#known-refactor-candidates)
 
 ## Overview
 
-MouseTrail is a single-file Swift application that demonstrates several advanced macOS programming concepts:
-- Custom window management with selective mouse interaction
-- Global event monitoring without requiring special permissions
-- Real-time animation using timers
-- Multi-window coordination
-- Background application behavior
+MouseTrail is a SwiftUI `MenuBarExtra` app with an AppKit-based overlay system. The SwiftUI side owns the menu bar icon, settings panel, and help window; the AppKit side (via `AppDelegate`) owns everything else: overlay windows, event monitors, trail rendering, gestures, ripples.
 
-The app runs as a UI element (LSUIElement), meaning it doesn't appear in the Dock and is designed to be an overlay tool.
+The app runs as `LSUIElement` — no Dock icon, menu bar only.
 
 ## Project Structure
 
 ```
 MouseTrail/
-├── main.swift              # Single source file containing all code
-├── build-working.sh        # Build script for creating .app bundle
-├── README.md              # User documentation
-├── ARCHITECTURE.md        # This file
-└── MouseTrail.app/   # Generated application bundle
-    └── Contents/
-        ├── Info.plist     # Application metadata
-        └── MacOS/
-            └── MouseTrail  # Compiled executable
+├── MouseTrailApp.swift         — @main SwiftUI entry, wires MenuBarExtra + AppDelegate
+├── AppCore.swift               — AppDelegate, TrailView, RippleEffect, RippleManager, LogFileViewer
+├── TrailSettings.swift         — @Observable settings model + UserDefaults persistence
+├── MenuBarSettingsView.swift   — SwiftUI settings panel
+├── HelpView.swift              — Help window (WKWebView reading README)
+├── PresetManager.swift         — Codable preset persistence
+├── TrailPreset.swift           — Preset data model
+├── LiveInfoModel.swift         — Cursor position / active display observable
+├── LaunchAtLoginService.swift  — ServiceManagement wrapper
+├── ShakeDetector.swift         — Axis-reversal shake detector
+├── CircleGestureDetector.swift — Cumulative-angle circle detector
+├── GestureCalibrator.swift     — Live calibration for gesture tuning
+├── GestureRouter.swift         — Gesture → action routing
+├── RippleKernel.ci.metal       — Core Image kernel for ripple distortion
+├── Info.plist, entitlements.plist
+└── build-working.sh            — Build script (Metal compile + bundle + sign + install)
 ```
-
-### Why Single File?
-
-This example uses a single-file architecture to:
-- Simplify understanding of component relationships
-- Make it easy to see all code at once
-- Reduce complexity for learning purposes
-- Enable quick compilation without build systems
 
 ## Core Components
 
-### 1. SelectiveClickPanel (Custom NSPanel)
+### AppDelegate (`AppCore.swift`)
 
-```swift
-class SelectiveClickPanel: NSPanel
-```
+The central coordinator. Owns:
+- An array of `TrailView` instances, one per `NSScreen`
+- `NSPanel` overlay windows (one per screen, `.canJoinAllSpaces`, `.floating`)
+- Global `NSEvent` monitors for mouse movement, click, mouseUp, and flag changes
+- A `CADisplayLink` (macOS 14+) or `Timer` fallback driving the 60 Hz animation
+- `ShakeDetector`, `CircleGestureDetector`, `GestureRouter`, `GestureCalibrator`
+- `RippleManager` (click ripples) and the `TrailSettings` reference
 
-A specialized window that implements selective mouse interaction:
+### TrailView (`AppCore.swift`)
 
-**Key Features:**
-- Inherits from `NSPanel` for floating window behavior
-- Starts with `ignoresMouseEvents = true` for click-through behavior
-- Uses `NSTrackingArea` to detect mouse hover over close button
-- Dynamically enables mouse events only when needed
+An `NSView` subclass that renders the trail for one screen. Uses:
+- Six `CAShapeLayer`s stacked: outer/middle/inner × core stack + outer/middle/inner × glow stack
+- A `CAGradientLayer` mask for smooth fade
+- Two additional `CAShapeLayer`s for the crosshair (vertical + horizontal)
+- Catmull-Rom spline interpolation through recent trail points
+- Time-based point fade computed every frame
 
-**Design Pattern:** 
-This implements the "Smart Window" pattern where the window intelligently manages its own interaction state based on user intent.
+### RippleEffect / RippleManager (`AppCore.swift`)
 
-### 2. AppDelegate (Application Controller)
+- `RippleEffect` owns a per-click `CALayer` displaying a `CIImage` distorted by the Metal-compiled `RippleKernel.ci.metal` kernel.
+- `RippleManager` captures a snapshot of the screen via `ScreenCaptureKit`, spawns a `RippleEffect`, and advances it each frame until its duration elapses.
+- Requires Screen Recording permission.
 
-```swift
-class AppDelegate: NSObject, NSApplicationDelegate
-```
+### Settings (`TrailSettings.swift`)
 
-The main application controller that manages:
-- Window lifecycle
-- Event monitoring
-- Timer-based updates
-- Resource cleanup
+- `@Observable` class holding ~40 properties covering visibility, appearance, gesture parameters, ripple tuning, and performance experiments.
+- UserDefaults-backed with debounced persistence (writes coalesce to one per ~300ms of quiet).
+- Three callbacks — `onChanged`, `onVisibilityChanged`, `onGestureParamsChanged` — fire immediately on each `didSet` so the UI stays live.
 
-**Responsibilities:**
-- Creates and configures both windows (info panel and red ball)
-- Sets up global event monitors for mouse movement and keyboard modifiers
-- Manages the animation loop via Timer
-- Handles application termination cleanup
-
-### 3. Window Management System
-
-The app creates two independent windows:
-
-1. **Info Panel Window** (`SelectiveClickPanel`)
-   - Displays system information
-   - Has selective mouse interaction
-   - Can be dragged with Command key
-
-2. **Ball Window** (`NSPanel`)
-   - Simple overlay for the red ball
-   - Always ignores mouse events
-   - Follows mouse with trailing effect
-
-## Technical Concepts
-
-### 1. Event Monitoring
-
-The app uses three types of event monitors:
-
-```swift
-// Global mouse movement monitoring
-NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved)
-
-// Global keyboard modifier monitoring
-NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged)
-
-// Local keyboard modifier monitoring (when app has focus)
-NSEvent.addLocalMonitorForEvents(matching: .flagsChanged)
-```
-
-**Why both global and local?**
-- Global monitors catch events when the app isn't focused
-- Local monitors ensure events are caught when the app is active
-- This dual approach ensures reliable modifier key detection
-
-### 2. Trailing Animation Algorithm
-
-The red ball trailing effect uses a position history buffer:
-
-```swift
-var mousePositionHistory: [NSPoint] = []
-```
-
-**How it works:**
-1. Initialize buffer with current position (repeated `ballTrailDelay` times)
-2. On each update, append new position to end
-3. Remove oldest position if buffer exceeds size
-4. Use the oldest position for ball placement
-
-This creates a smooth, delayed following effect.
-
-### 3. Window Layering
-
-Window levels ensure proper stacking:
-
-```swift
-window.level = .floating        // Info panel floats above normal windows
-ballWindow.level = .floating    // Ball also floats
-```
-
-Collection behaviors ensure windows appear on all spaces:
-
-```swift
-window.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle, .stationary, .fullScreenAuxiliary]
-```
-
-### 4. Selective Mouse Interaction
-
-The `SelectiveClickPanel` uses `NSTrackingArea` to monitor mouse location:
-
-```swift
-NSTrackingArea(
-    rect: button.frame,
-    options: [.mouseEnteredAndExited, .activeAlways],
-    owner: self,
-    userInfo: nil
-)
-```
-
-When mouse enters the close button area:
-1. `mouseEntered()` is called
-2. `ignoresMouseEvents` is set to `false`
-3. Button becomes clickable
-
-When mouse exits:
-1. `mouseExited()` is called
-2. `ignoresMouseEvents` returns to `true` (unless dragging)
-
-### 5. Background App Configuration
-
-The app runs without a Dock icon:
-
-```swift
-app.setActivationPolicy(.prohibited)
-```
-
-Combined with `LSUIElement` in Info.plist, this creates a true background utility.
-
-## Code Walkthrough
-
-### Initialization Flow
-
-1. **Bootstrap** (main.swift:346-350)
-   - Create NSApplication instance
-   - Create and assign AppDelegate
-   - Set activation policy
-   - Start run loop
-
-2. **App Launch** (`applicationDidFinishLaunching`)
-   - Verify screens available
-   - Create info window at mouse position
-   - Configure window properties
-   - Create UI elements (border, label, close button)
-   - Set up tracking area
-   - Create ball window
-   - Start event monitors and timer
-
-3. **Window Creation**
-   - Info window: Custom panel with specific behaviors
-   - Ball window: Simple panel for animation
-   - Both configured for floating and all-spaces behavior
-
-### Update Cycle
-
-The app updates through multiple mechanisms:
-
-1. **Timer-based updates** (60 FPS)
-   - Update display information
-   - Update ball position for smooth animation
-
-2. **Event-driven updates**
-   - Mouse movement updates coordinates immediately
-   - App switching triggers info refresh
-   - Modifier keys change window behavior
-
-### Cleanup Flow
-
-When terminating (`applicationWillTerminate`):
-1. Invalidate and nil timer
-2. Remove event monitors
-3. Close ball window
-4. Remove notification observers
-
-This ensures no memory leaks or orphaned resources.
-
-## Event Flow
-
-### Mouse Movement
+## Data Flow
 
 ```
-User moves mouse
-    ↓
-Global mouse event monitor triggered
-    ↓
-updateDisplay() - Updates coordinate text
-    ↓
-updateBallPosition() - Adds position to history
-    ↓
-updateBallWindowPosition() - Moves ball window
+NSEvent (global monitor)
+   │
+   ▼
+AppDelegate.handleMouseMovement(_:)
+   │
+   ├──► MouseSample → ShakeDetector → ShakeEvent? → GestureRouter → GestureAction
+   │
+   ├──► MouseSample → CircleGestureDetector → CircleEvent? → GestureRouter → GestureAction
+   │
+   ├──► MouseSample → rawMouseSamples buffer → emitDelayedTrailPoints
+   │                                              │
+   │                                              ▼
+   │                                           TrailView.addPoint
+   │
+   └──► GestureCalibrator?.addSample (when calibration panel open)
+
+CADisplayLink tick → AppDelegate.updateActiveAnimation → each TrailView.updateTrail
 ```
 
-### Command Key Press
+## Event Pipeline
 
-```
-User presses Command key
-    ↓
-flagsChanged event triggered (global + local)
-    ↓
-handleFlagsChanged() called
-    ↓
-Window draggable state updated
-Border color changes to yellow
-Mouse events enabled for entire window
-```
+- Global monitors only (`NSEvent.addGlobalMonitorForEvents`). Local monitors are intentionally omitted: the app has no key window in normal use, and having both would double-feed the gesture detectors.
+- Events monitored: `.mouseMoved`, `.leftMouseDragged`, `.leftMouseDown`, `.leftMouseUp`, `.flagsChanged`.
+- Click-drag classification: `.leftMouseDown` starts a tentative click; if the cursor moves beyond a threshold before `.leftMouseUp`, it's a drag (ripple suppressed).
+- `.flagsChanged` detects release of the "hyper" modifier chord, which commits any pending hyper+circle gesture.
 
-### Close Button Interaction
+## Rendering Pipeline
 
-```
-Mouse enters close button area
-    ↓
-NSTrackingArea triggers mouseEntered
-    ↓
-Window enables mouse events
-    ↓
-User clicks button
-    ↓
-closeButtonClicked() called
-    ↓
-NSApplication.terminate()
-```
+1. **Sample capture.** Raw mouse samples land in a bounded buffer (`rawMouseSamples`) with timestamps from `ProcessInfo.systemUptime` (monotonic).
+2. **Playback delay.** Samples older than `visualPlaybackDelay` are emitted as trail points. This lets us smooth out jittery input by running the renderer slightly behind live input.
+3. **Spline fit.** Each frame, `TrailView.updateTrail` rebuilds a `CGPath` via Catmull-Rom interpolation through visible points.
+4. **Layer update.** All six trail layers share the same path but different stroke widths, colors, and opacities.
+5. **Fade.** Point alpha decays via the gradient mask and timed removal.
 
-## Extension Ideas
+A CADisplayLink drives updates on macOS 14+; older systems fall back to a 60 Hz `Timer` with half-frame tolerance so the OS can coalesce wakeups.
 
-### 1. Customizable Ball Appearance
+## Gesture Pipeline
 
-Add preferences for:
-```swift
-// In Constants
-static let ballColor: NSColor = .red
-static let ballOpacity: CGFloat = 0.8
-static let ballShadowEnabled: Bool = true
-```
+Each detector is a `struct` with `mutating func addSample(_:) -> Event?`:
 
-Consider creating a preferences window or reading from UserDefaults.
+- **ShakeDetector** — identifies rapid back-and-forth along a dominant axis. Fires `ShakeEvent(axisAngle, reversals, averageVelocity, angularSpread)`. Angle is normalized to `[0, π)` because shakes are bidirectional.
+- **CircleGestureDetector** — tracks cumulative angular displacement around a running-sum centroid. Fires `CircleEvent(direction, averageRadius, circleCount)` when the configured number of circles complete within the time window. Rejects spirals via a max-radius-variance check.
+- **GestureCalibrator** — reuses the same axis/segment math to let the user live-tune shake zones.
 
-### 2. Multiple Trailing Objects
+Both detectors guard against backward-time samples (sleep/wake, NTP adjustments) by resetting on detected clock jumps.
 
-Create an array of ball windows:
-```swift
-var ballWindows: [NSPanel] = []
-var ballViews: [NSView] = []
+**GestureRouter** maps gesture events to `GestureAction`s:
+- `.none`, `.toggleVisuals`
+- `.simulateKeyPress(keyCode, modifiers)` — via `CGEvent`; requires Accessibility permission
+- `.runShellCommand(command)` — via `Process` running `/usr/bin/env bash -c`; all shell commands are logged at `.info` level
 
-// Create multiple balls with different delays
-for i in 0..<5 {
-    let delay = Constants.ballTrailDelay * (i + 1)
-    // Create ball with increasing delay
-}
-```
+`hyper+circle`: when a circle fires while the hyperkey chord is held, the event is queued. On hyperkey release (via `.flagsChanged`), the queued action fires.
 
-### 3. Custom Info Display
+## Settings & Persistence
 
-Add more system information:
-```swift
-// CPU usage
-let cpuUsage = // ... get CPU info
-displayText += "CPU: \(cpuUsage)%\n"
+- `TrailSettings` persists via `UserDefaults` (one key per property, prefixed by domain: `trail.*`, `gesture.*`, `ripple.*`, `performance.*`, `visibility.*`).
+- `save()` is debounced (~300ms); `flushPendingSave()` runs on `applicationWillTerminate`.
+- `apply(preset:)` temporarily suppresses callbacks, sets properties in bulk, then fires `onChanged` + `onVisibilityChanged` once.
+- Gesture router config (zones + circle config) is serialized as JSON under a single UserDefaults key.
+- Presets are stored as JSON files in `~/Library/Application Support/MouseTrail/Presets/`.
 
-// Memory usage
-let memoryUsage = // ... get memory info
-displayText += "Memory: \(memoryUsage)GB\n"
+## Known Refactor Candidates
 
-// Network status
-let networkStatus = // ... get network info
-displayText += "Network: \(networkStatus)\n"
-```
+These are tracked in the plan file at `~/.claude/plans/ok-we-are-on-delightful-perlis.md`:
 
-### 4. Gesture Support
-
-Add trackpad gestures:
-```swift
-let panGesture = NSPanGestureRecognizer(target: self, action: #selector(handlePan))
-window.contentView?.addGestureRecognizer(panGesture)
-
-@objc func handlePan(_ gesture: NSPanGestureRecognizer) {
-    // Handle window movement via gesture
-}
-```
-
-### 5. Themes
-
-Implement different visual themes:
-```swift
-enum Theme {
-    case dark, light, neon, minimal
-    
-    var borderColor: NSColor { /* ... */ }
-    var backgroundColor: NSColor { /* ... */ }
-    var textColor: NSColor { /* ... */ }
-}
-```
-
-### 6. Recording/Playback
-
-Record mouse movements and replay them:
-```swift
-struct MouseRecord {
-    let timestamp: TimeInterval
-    let position: NSPoint
-}
-
-var recording: [MouseRecord] = []
-var isRecording = false
-var isPlaying = false
-```
-
-### 7. Hot Corners
-
-Trigger actions when mouse enters screen corners:
-```swift
-func checkHotCorners(_ location: NSPoint) {
-    let threshold: CGFloat = 10
-    
-    if location.x < threshold && location.y < threshold {
-        // Bottom-left corner action
-    }
-    // Check other corners...
-}
-```
-
-## Best Practices Demonstrated
-
-1. **Memory Management**
-   - Weak self references in closures
-   - Proper cleanup in dealloc
-   - Timer invalidation
-
-2. **Event Handling**
-   - Both global and local monitors
-   - Proper event removal
-   - Efficient update batching
-
-3. **UI Responsiveness**
-   - 60 FPS update rate
-   - Minimal work in event handlers
-   - Smart window interaction
-
-4. **Code Organization**
-   - Clear separation of concerns
-   - Constants enumeration
-   - Logical method grouping
-
-## Performance Considerations
-
-The app is designed to be lightweight:
-- Timer runs at 60 FPS but only updates when needed
-- Mouse history buffer has fixed size
-- No complex calculations in hot paths
-- Minimal memory allocation during runtime
-
-## Security Notes
-
-The app requires no special permissions because:
-- It uses public APIs for event monitoring
-- No accessibility features are accessed
-- No user data is stored or transmitted
-- All operations are read-only system queries
-
-This makes it safe to run without privacy concerns.
-
-## Conclusion
-
-MouseTrail demonstrates how to build a modern macOS utility using Swift and Cocoa. It showcases window management, event handling, animation, and system integration in a clean, understandable package. The single-file architecture makes it an excellent learning resource for macOS development.
+- **Split AppCore.swift** (3,066 lines → 4 files: `AppDelegate.swift`, `TrailView.swift`, `Ripple.swift`, `LogFileViewer.swift`)
+- **Extract MenuBarSettingsView subviews** (1,315 lines → ~6 section views)
+- **EventMonitorHub** abstraction (token-based registration, clean teardown, natural dedupe)
+- **AnimationDriver protocol** (DisplayLinkDriver + TimerDriver)
+- **GestureDetector protocol + ring buffer** (unifies detector scaffolding, O(1) sample pruning)
+- **TrailWindowManager per-screen container** (removes per-screen state from AppDelegate)
+- **SettingsEventBus protocol** (replaces the 10+ closures passed through `MouseTrailApp.swift`)
+- **Separate TrailSettings model from persistence** (enables undo/redo, cleaner testing)
