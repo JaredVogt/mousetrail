@@ -775,14 +775,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         presetManager.takeCleanSnapshot(from: settings)
         isTrailVisible = settings.isTrailVisible
         isRippleEnabled = settings.isRippleEnabled
-        settings.onChanged = { [weak self] in
-            self?.handleTrailSettingsChanged()
-        }
-        settings.onVisibilityChanged = { [weak self] in
-            self?.applyVisibilitySettings()
-        }
-        settings.onGestureParamsChanged = { [weak self] in
-            self?.applyGestureDetectorParams()
+        settings.onChange = { [weak self] delta in
+            guard let self else { return }
+            switch delta {
+            case .appearance:
+                self.handleTrailSettingsChanged()
+            case .visibility:
+                self.applyVisibilitySettings()
+            case .gesture:
+                self.applyGestureDetectorParams()
+            }
         }
         applyGestureDetectorParams()
 

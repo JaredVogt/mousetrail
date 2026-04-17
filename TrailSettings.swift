@@ -91,108 +91,120 @@ enum TrailSettingsDefaults {
     static let capTrailRenderingTo60FPS = false
 }
 
+/// Category of a settings change, so consumers can branch without subscribing
+/// to three separate callbacks.
+enum SettingsDelta {
+    /// Trail appearance: colors, widths, fades, performance experiments, algorithm.
+    case appearance
+    /// Window/section visibility toggles (trail, info panel, ripple, crosshair).
+    case visibility
+    /// Gesture detector parameters (shake + circle thresholds).
+    case gesture
+}
+
 @Observable
 class TrailSettings {
-    /// Callback when trail appearance settings change
-    var onChanged: (() -> Void)?
-    /// Callback when visibility toggles change
-    var onVisibilityChanged: (() -> Void)?
+    /// Unified change notification — fires on every property mutation with a
+    /// delta category so consumers can dispatch to the right handler.
+    var onChange: ((SettingsDelta) -> Void)?
 
     // MARK: - Visibility
 
-    var isTrailVisible = TrailSettingsDefaults.isTrailVisible { didSet { save(); onVisibilityChanged?() } }
-    var isInfoPanelVisible = TrailSettingsDefaults.isInfoPanelVisible { didSet { save(); onVisibilityChanged?() } }
-    var isRippleEnabled = TrailSettingsDefaults.isRippleEnabled { didSet { save(); onVisibilityChanged?() } }
-    var isCrosshairVisible = TrailSettingsDefaults.isCrosshairVisible { didSet { save(); onVisibilityChanged?() } }
+    var isTrailVisible = TrailSettingsDefaults.isTrailVisible { didSet { save(); notify(.visibility) } }
+    var isInfoPanelVisible = TrailSettingsDefaults.isInfoPanelVisible { didSet { save(); notify(.visibility) } }
+    var isRippleEnabled = TrailSettingsDefaults.isRippleEnabled { didSet { save(); notify(.visibility) } }
+    var isCrosshairVisible = TrailSettingsDefaults.isCrosshairVisible { didSet { save(); notify(.visibility) } }
     var isShakeToggleEnabled = TrailSettingsDefaults.isShakeToggleEnabled { didSet { save() } }
     var logLevelRaw = TrailSettingsDefaults.logLevelRaw { didSet { save(); currentLogLevel = LogLevel(rawValue: logLevelRaw) ?? .info } }
 
     // MARK: - Shake Detector Parameters
 
-    /// Callback when gesture detector parameters change
-    var onGestureParamsChanged: (() -> Void)?
-
-    var shakeTimeWindow = TrailSettingsDefaults.shakeTimeWindow { didSet { save(); onGestureParamsChanged?() } }
-    var shakeRequiredReversals = TrailSettingsDefaults.shakeRequiredReversals { didSet { save(); onGestureParamsChanged?() } }
-    var shakeMinDisplacement = TrailSettingsDefaults.shakeMinDisplacement { didSet { save(); onGestureParamsChanged?() } }
-    var shakeMinVelocity = TrailSettingsDefaults.shakeMinVelocity { didSet { save(); onGestureParamsChanged?() } }
-    var shakeCooldown = TrailSettingsDefaults.shakeCooldown { didSet { save(); onGestureParamsChanged?() } }
-    var shakeAngularTolerance = TrailSettingsDefaults.shakeAngularTolerance { didSet { save(); onGestureParamsChanged?() } }
+    var shakeTimeWindow = TrailSettingsDefaults.shakeTimeWindow { didSet { save(); notify(.gesture) } }
+    var shakeRequiredReversals = TrailSettingsDefaults.shakeRequiredReversals { didSet { save(); notify(.gesture) } }
+    var shakeMinDisplacement = TrailSettingsDefaults.shakeMinDisplacement { didSet { save(); notify(.gesture) } }
+    var shakeMinVelocity = TrailSettingsDefaults.shakeMinVelocity { didSet { save(); notify(.gesture) } }
+    var shakeCooldown = TrailSettingsDefaults.shakeCooldown { didSet { save(); notify(.gesture) } }
+    var shakeAngularTolerance = TrailSettingsDefaults.shakeAngularTolerance { didSet { save(); notify(.gesture) } }
 
     // MARK: - Circle Detector Parameters
 
-    var circleTimeWindow = TrailSettingsDefaults.circleTimeWindow { didSet { save(); onGestureParamsChanged?() } }
-    var circleSampleWindow = TrailSettingsDefaults.circleSampleWindow { didSet { save(); onGestureParamsChanged?() } }
-    var circleMinRadius = TrailSettingsDefaults.circleMinRadius { didSet { save(); onGestureParamsChanged?() } }
-    var circleMinSpeed = TrailSettingsDefaults.circleMinSpeed { didSet { save(); onGestureParamsChanged?() } }
-    var circleCooldown = TrailSettingsDefaults.circleCooldown { didSet { save(); onGestureParamsChanged?() } }
-    var circleRequiredCircles = TrailSettingsDefaults.circleRequiredCircles { didSet { save(); onGestureParamsChanged?() } }
-    var circleMaxRadiusVariance = TrailSettingsDefaults.circleMaxRadiusVariance { didSet { save(); onGestureParamsChanged?() } }
+    var circleTimeWindow = TrailSettingsDefaults.circleTimeWindow { didSet { save(); notify(.gesture) } }
+    var circleSampleWindow = TrailSettingsDefaults.circleSampleWindow { didSet { save(); notify(.gesture) } }
+    var circleMinRadius = TrailSettingsDefaults.circleMinRadius { didSet { save(); notify(.gesture) } }
+    var circleMinSpeed = TrailSettingsDefaults.circleMinSpeed { didSet { save(); notify(.gesture) } }
+    var circleCooldown = TrailSettingsDefaults.circleCooldown { didSet { save(); notify(.gesture) } }
+    var circleRequiredCircles = TrailSettingsDefaults.circleRequiredCircles { didSet { save(); notify(.gesture) } }
+    var circleMaxRadiusVariance = TrailSettingsDefaults.circleMaxRadiusVariance { didSet { save(); notify(.gesture) } }
 
     // MARK: - Trail Width
 
-    var maxWidth = TrailSettingsDefaults.maxWidth { didSet { save(); onChanged?() } }
-    var glowWidthMultiplier = TrailSettingsDefaults.glowWidthMultiplier { didSet { save(); onChanged?() } }
+    var maxWidth = TrailSettingsDefaults.maxWidth { didSet { save(); notify(.appearance) } }
+    var glowWidthMultiplier = TrailSettingsDefaults.glowWidthMultiplier { didSet { save(); notify(.appearance) } }
 
     // MARK: - Trail Motion
 
-    var trailAlgorithm: TrailAlgorithm = TrailSettingsDefaults.trailAlgorithm { didSet { save(); onChanged?() } }
+    var trailAlgorithm: TrailAlgorithm = TrailSettingsDefaults.trailAlgorithm { didSet { save(); notify(.appearance) } }
 
     // MARK: - Movement
 
-    var movementThreshold = TrailSettingsDefaults.movementThreshold { didSet { save(); onChanged?() } }
-    var minimumVelocity = TrailSettingsDefaults.minimumVelocity { didSet { save(); onChanged?() } }
+    var movementThreshold = TrailSettingsDefaults.movementThreshold { didSet { save(); notify(.appearance) } }
+    var minimumVelocity = TrailSettingsDefaults.minimumVelocity { didSet { save(); notify(.appearance) } }
 
     // MARK: - Fade Duration
 
-    var coreFadeTime = TrailSettingsDefaults.coreFadeTime { didSet { save(); onChanged?() } }
-    var glowFadeTime = TrailSettingsDefaults.glowFadeTime { didSet { save(); onChanged?() } }
+    var coreFadeTime = TrailSettingsDefaults.coreFadeTime { didSet { save(); notify(.appearance) } }
+    var glowFadeTime = TrailSettingsDefaults.glowFadeTime { didSet { save(); notify(.appearance) } }
 
     // MARK: - Core Trail Color (RGB components)
 
-    var coreTrailR = TrailSettingsDefaults.coreTrailR { didSet { save(); onChanged?() } }
-    var coreTrailG = TrailSettingsDefaults.coreTrailG { didSet { save(); onChanged?() } }
-    var coreTrailB = TrailSettingsDefaults.coreTrailB { didSet { save(); onChanged?() } }
+    var coreTrailR = TrailSettingsDefaults.coreTrailR { didSet { save(); notify(.appearance) } }
+    var coreTrailG = TrailSettingsDefaults.coreTrailG { didSet { save(); notify(.appearance) } }
+    var coreTrailB = TrailSettingsDefaults.coreTrailB { didSet { save(); notify(.appearance) } }
 
     // MARK: - Glow Trail Color (RGB components)
 
-    var glowTrailR = TrailSettingsDefaults.glowTrailR { didSet { save(); onChanged?() } }
-    var glowTrailG = TrailSettingsDefaults.glowTrailG { didSet { save(); onChanged?() } }
-    var glowTrailB = TrailSettingsDefaults.glowTrailB { didSet { save(); onChanged?() } }
+    var glowTrailR = TrailSettingsDefaults.glowTrailR { didSet { save(); notify(.appearance) } }
+    var glowTrailG = TrailSettingsDefaults.glowTrailG { didSet { save(); notify(.appearance) } }
+    var glowTrailB = TrailSettingsDefaults.glowTrailB { didSet { save(); notify(.appearance) } }
 
     // MARK: - Glow Trail Opacity
 
-    var glowOuterOpacity = TrailSettingsDefaults.glowOuterOpacity { didSet { save(); onChanged?() } }
-    var glowMiddleOpacity = TrailSettingsDefaults.glowMiddleOpacity { didSet { save(); onChanged?() } }
+    var glowOuterOpacity = TrailSettingsDefaults.glowOuterOpacity { didSet { save(); notify(.appearance) } }
+    var glowMiddleOpacity = TrailSettingsDefaults.glowMiddleOpacity { didSet { save(); notify(.appearance) } }
 
     // MARK: - Crosshair Appearance
 
-    var crosshairR = TrailSettingsDefaults.crosshairR { didSet { save(); onChanged?() } }
-    var crosshairG = TrailSettingsDefaults.crosshairG { didSet { save(); onChanged?() } }
-    var crosshairB = TrailSettingsDefaults.crosshairB { didSet { save(); onChanged?() } }
-    var crosshairOpacity = TrailSettingsDefaults.crosshairOpacity { didSet { save(); onChanged?() } }
-    var crosshairLineWidth = TrailSettingsDefaults.crosshairLineWidth { didSet { save(); onChanged?() } }
+    var crosshairR = TrailSettingsDefaults.crosshairR { didSet { save(); notify(.appearance) } }
+    var crosshairG = TrailSettingsDefaults.crosshairG { didSet { save(); notify(.appearance) } }
+    var crosshairB = TrailSettingsDefaults.crosshairB { didSet { save(); notify(.appearance) } }
+    var crosshairOpacity = TrailSettingsDefaults.crosshairOpacity { didSet { save(); notify(.appearance) } }
+    var crosshairLineWidth = TrailSettingsDefaults.crosshairLineWidth { didSet { save(); notify(.appearance) } }
 
     // MARK: - Ripple Effect
 
-    var rippleRadius = TrailSettingsDefaults.rippleRadius { didSet { save(); onChanged?() } }
-    var rippleSpeed = TrailSettingsDefaults.rippleSpeed { didSet { save(); onChanged?() } }
-    var rippleWavelength = TrailSettingsDefaults.rippleWavelength { didSet { save(); onChanged?() } }
-    var rippleDamping = TrailSettingsDefaults.rippleDamping { didSet { save(); onChanged?() } }
-    var rippleAmplitude = TrailSettingsDefaults.rippleAmplitude { didSet { save(); onChanged?() } }
-    var rippleDuration = TrailSettingsDefaults.rippleDuration { didSet { save(); onChanged?() } }
-    var rippleSpecularIntensity = TrailSettingsDefaults.rippleSpecularIntensity { didSet { save(); onChanged?() } }
+    var rippleRadius = TrailSettingsDefaults.rippleRadius { didSet { save(); notify(.appearance) } }
+    var rippleSpeed = TrailSettingsDefaults.rippleSpeed { didSet { save(); notify(.appearance) } }
+    var rippleWavelength = TrailSettingsDefaults.rippleWavelength { didSet { save(); notify(.appearance) } }
+    var rippleDamping = TrailSettingsDefaults.rippleDamping { didSet { save(); notify(.appearance) } }
+    var rippleAmplitude = TrailSettingsDefaults.rippleAmplitude { didSet { save(); notify(.appearance) } }
+    var rippleDuration = TrailSettingsDefaults.rippleDuration { didSet { save(); notify(.appearance) } }
+    var rippleSpecularIntensity = TrailSettingsDefaults.rippleSpecularIntensity { didSet { save(); notify(.appearance) } }
 
     // MARK: - Performance Experiments
 
-    var reduceSyntheticSampleRate = TrailSettingsDefaults.reduceSyntheticSampleRate { didSet { save(); onChanged?() } }
-    var enableSmoothInputCoalescing = TrailSettingsDefaults.enableSmoothInputCoalescing { didSet { save(); onChanged?() } }
-    var useReducedLayerStack = TrailSettingsDefaults.useReducedLayerStack { didSet { save(); onChanged?() } }
-    var onlyUpdateDirtyScreens = TrailSettingsDefaults.onlyUpdateDirtyScreens { didSet { save(); onChanged?() } }
-    var useLinearSmoothPlaybackLookup = TrailSettingsDefaults.useLinearSmoothPlaybackLookup { didSet { save(); onChanged?() } }
-    var useStrongerPointDecimation = TrailSettingsDefaults.useStrongerPointDecimation { didSet { save(); onChanged?() } }
-    var useRelaxedPathRebuild = TrailSettingsDefaults.useRelaxedPathRebuild { didSet { save(); onChanged?() } }
-    var capTrailRenderingTo60FPS = TrailSettingsDefaults.capTrailRenderingTo60FPS { didSet { save(); onChanged?() } }
+    var reduceSyntheticSampleRate = TrailSettingsDefaults.reduceSyntheticSampleRate { didSet { save(); notify(.appearance) } }
+    var enableSmoothInputCoalescing = TrailSettingsDefaults.enableSmoothInputCoalescing { didSet { save(); notify(.appearance) } }
+    var useReducedLayerStack = TrailSettingsDefaults.useReducedLayerStack { didSet { save(); notify(.appearance) } }
+    var onlyUpdateDirtyScreens = TrailSettingsDefaults.onlyUpdateDirtyScreens { didSet { save(); notify(.appearance) } }
+    var useLinearSmoothPlaybackLookup = TrailSettingsDefaults.useLinearSmoothPlaybackLookup { didSet { save(); notify(.appearance) } }
+    var useStrongerPointDecimation = TrailSettingsDefaults.useStrongerPointDecimation { didSet { save(); notify(.appearance) } }
+    var useRelaxedPathRebuild = TrailSettingsDefaults.useRelaxedPathRebuild { didSet { save(); notify(.appearance) } }
+    var capTrailRenderingTo60FPS = TrailSettingsDefaults.capTrailRenderingTo60FPS { didSet { save(); notify(.appearance) } }
+
+    private func notify(_ delta: SettingsDelta) {
+        guard !isSuppressingCallbacks else { return }
+        onChange?(delta)
+    }
 
     // MARK: - Computed Colors
 
@@ -389,8 +401,9 @@ class TrailSettings {
         isSuppressingCallbacks = true
         defer {
             isSuppressingCallbacks = false
-            onChanged?()
-            onVisibilityChanged?()
+            onChange?(.appearance)
+            onChange?(.visibility)
+            onChange?(.gesture)
         }
 
         if d.object(forKey: Keys.maxWidth) != nil { maxWidth = d.double(forKey: Keys.maxWidth) }
@@ -486,8 +499,8 @@ class TrailSettings {
         crosshairLineWidth = preset.crosshairLineWidth
         isSuppressingCallbacks = false
         save()
-        onChanged?()
-        onVisibilityChanged?()
+        onChange?(.appearance)
+        onChange?(.visibility)
     }
 
     func resetToDefaults() {
@@ -534,8 +547,9 @@ class TrailSettings {
         capTrailRenderingTo60FPS = TrailSettingsDefaults.capTrailRenderingTo60FPS
         isSuppressingCallbacks = false
         save()
-        onChanged?()
-        onVisibilityChanged?()
+        onChange?(.appearance)
+        onChange?(.visibility)
+        onChange?(.gesture)
     }
 
     func setAllPerformanceExperiments(enabled: Bool) {
@@ -550,6 +564,6 @@ class TrailSettings {
         capTrailRenderingTo60FPS = enabled
         isSuppressingCallbacks = false
         save()
-        onChanged?()
+        onChange?(.appearance)
     }
 }
