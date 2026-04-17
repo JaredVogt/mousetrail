@@ -33,8 +33,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      */
     // MARK: - Event Monitoring Properties
 
-    /// Global event monitors for mouse movement and clicks
-    var eventMonitors: [Any] = []
+    /// Global event monitor registry; tears down on deinit.
+    let eventMonitorHub = EventMonitorHub()
 
     /// Fallback timer if display-linked updates are unavailable
     var updateTimer: Timer?
@@ -712,43 +712,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .rightMouseDragged,
             .otherMouseDragged
         ]
-        if let movementMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: movementMask,
-            handler: { [weak self] event in
-                self?.handleMouseMovement(event)
-            }
-        ) {
-            eventMonitors.append(movementMonitor)
+        eventMonitorHub.addGlobal(for: movementMask) { [weak self] event in
+            self?.handleMouseMovement(event)
         }
-
-        // Monitor mouse clicks for ripple effect in both active and inactive states.
-        if let clickMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: .leftMouseDown,
-            handler: { [weak self] event in
-                self?.handleMouseClick(event)
-            }
-        ) {
-            eventMonitors.append(clickMonitor)
+        eventMonitorHub.addGlobal(for: .leftMouseDown) { [weak self] event in
+            self?.handleMouseClick(event)
         }
-
-        // Monitor left mouse up for click-drag classification
-        if let mouseUpMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: .leftMouseUp,
-            handler: { [weak self] event in
-                self?.handleMouseUp(event)
-            }
-        ) {
-            eventMonitors.append(mouseUpMonitor)
+        eventMonitorHub.addGlobal(for: .leftMouseUp) { [weak self] event in
+            self?.handleMouseUp(event)
         }
-
-        // Monitor modifier key changes for hyper+circle release detection
-        if let flagsGlobalMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: .flagsChanged,
-            handler: { [weak self] event in
-                self?.handleFlagsChanged(event)
-            }
-        ) {
-            eventMonitors.append(flagsGlobalMonitor)
+        eventMonitorHub.addGlobal(for: .flagsChanged) { [weak self] event in
+            self?.handleFlagsChanged(event)
         }
         // NOTE: local monitors intentionally omitted — the app has no key window in
         // normal use (LSUIElement menu bar app), so local monitors would only fire
@@ -1337,10 +1311,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         infoUpdateTimer = nil
         NSEvent.isMouseCoalescingEnabled = true
 
-        for monitor in eventMonitors {
-            NSEvent.removeMonitor(monitor)
-        }
-        eventMonitors.removeAll()
+        eventMonitorHub.removeAll()
 
         for window in trailWindows {
             window.close()
