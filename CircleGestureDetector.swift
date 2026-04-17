@@ -24,7 +24,7 @@ struct CircleEvent {
 /// around the centroid of recent mouse positions. Triggers when the required
 /// number of full circles are completed within a time window.
 /// Returns a CircleEvent with direction and radius information.
-struct CircleGestureDetector {
+struct CircleGestureDetector: GestureDetector {
     // MARK: - Configuration
 
     /// Time window in which completed circles must occur to trigger
@@ -51,8 +51,7 @@ struct CircleGestureDetector {
 
     // MARK: - Internal State
 
-    private var samples: [MouseSample] = []
-    private let maxSamples = 256
+    private var samples = RingBuffer<MouseSample>(capacity: 256)
 
     /// Running centroid accumulators — updated incrementally as samples are added/pruned
     /// to avoid re-scanning the whole sample array on every mouse event.
@@ -81,7 +80,7 @@ struct CircleGestureDetector {
     // MARK: - API
 
     /// Called on every mouse event. Returns a CircleEvent if the circle gesture was just detected.
-    mutating func addSample(_ sample: MouseSample) -> CircleEvent? {
+    mutating func feed(_ sample: MouseSample) -> CircleEvent? {
         // Guard against clock jumps (sleep/wake, NTP correction) — reset on backward time.
         if let last = samples.last, sample.timestamp < last.timestamp {
             reset()
@@ -89,21 +88,18 @@ struct CircleGestureDetector {
             return nil
         }
 
-        // Append and prune old samples
-        appendWithRunningSum(sample)
+        // Prune samples outside the sample window (plus small overshoot margin)
         let cutoff = sample.timestamp - (sampleWindow + 0.25)
-        if let firstValid = samples.firstIndex(where: { $0.timestamp >= cutoff }) {
-            if firstValid > 0 { removeFirstWithRunningSum(firstValid) }
-        } else {
-            samples.removeAll()
-            sumX = 0
-            sumY = 0
-            resetAngleTracking()
-            return nil
+        while let oldest = samples.first, oldest.timestamp < cutoff {
+            popFirstWithRunningSum()
         }
-        if samples.count > maxSamples {
-            removeFirstWithRunningSum(samples.count - maxSamples)
+
+        // If the ring buffer is full, evict oldest *with* running-sum bookkeeping
+        // before appending — otherwise the overwrite would leave sumX/sumY stale.
+        if samples.isFull {
+            popFirstWithRunningSum()
         }
+        appendWithRunningSum(sample)
 
         // Cooldown check
         if sample.timestamp - lastDetectionTimestamp < cooldownDuration {
@@ -201,6 +197,12 @@ struct CircleGestureDetector {
         return nil
     }
 
+    /// Back-compat alias — AppDelegate still calls `addSample`.
+    @discardableResult
+    mutating func addSample(_ sample: MouseSample) -> CircleEvent? {
+        feed(sample)
+    }
+
     /// Reset all state
     mutating func reset() {
         samples.removeAll()
@@ -219,13 +221,10 @@ struct CircleGestureDetector {
         sumY += sample.location.y
     }
 
-    private mutating func removeFirstWithRunningSum(_ k: Int) {
-        guard k > 0, k <= samples.count else { return }
-        for i in 0..<k {
-            sumX -= samples[i].location.x
-            sumY -= samples[i].location.y
-        }
-        samples.removeFirst(k)
+    private mutating func popFirstWithRunningSum() {
+        guard let evicted = samples.popFirst() else { return }
+        sumX -= evicted.location.x
+        sumY -= evicted.location.y
     }
 
     private mutating func resetAngleTracking() {

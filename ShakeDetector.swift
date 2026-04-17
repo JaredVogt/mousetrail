@@ -22,7 +22,7 @@ struct ShakeEvent {
 /// Detects rapid back-and-forth mouse shaking along any axis.
 /// Works by counting direction reversals projected onto the dominant axis of motion.
 /// Returns a ShakeEvent with axis information so directional shakes can be distinguished.
-struct ShakeDetector {
+struct ShakeDetector: GestureDetector {
     // MARK: - Configuration
 
     /// Time window in which reversals must occur to count as a shake
@@ -47,14 +47,13 @@ struct ShakeDetector {
 
     // MARK: - Internal State
 
-    private var samples: [MouseSample] = []
-    private let maxSamples = 128
+    private var samples = RingBuffer<MouseSample>(capacity: 128)
     private var lastShakeTimestamp: TimeInterval = 0
 
     // MARK: - API
 
     /// Called on every mouse event. Returns a ShakeEvent if a shake was just detected, nil otherwise.
-    mutating func addSample(_ sample: MouseSample) -> ShakeEvent? {
+    mutating func feed(_ sample: MouseSample) -> ShakeEvent? {
         // Guard against clock jumps (sleep/wake, NTP correction) — reset on backward time.
         if let last = samples.last, sample.timestamp < last.timestamp {
             reset()
@@ -62,18 +61,14 @@ struct ShakeDetector {
             return nil
         }
 
-        // Append and prune old samples
-        samples.append(sample)
+        // Prune samples outside the time window (plus small overshoot margin)
         let cutoff = sample.timestamp - (timeWindow + 0.25)
-        if let firstValid = samples.firstIndex(where: { $0.timestamp >= cutoff }) {
-            if firstValid > 0 { samples.removeFirst(firstValid) }
-        } else {
-            samples.removeAll()
-            return nil
+        while let oldest = samples.first, oldest.timestamp < cutoff {
+            samples.popFirst()
         }
-        if samples.count > maxSamples {
-            samples.removeFirst(samples.count - maxSamples)
-        }
+
+        // Append current sample; ring buffer overwrites oldest on overflow
+        samples.append(sample)
 
         // Cooldown check
         if sample.timestamp - lastShakeTimestamp < cooldownDuration {
@@ -84,12 +79,13 @@ struct ShakeDetector {
         guard samples.count >= 4 else { return nil }
 
         // Determine dominant axis from total displacement across the window
-        let dominantAxis = ShakeAxisMath.dominantAxis(from: samples)
+        let sampleArray = Array(samples)
+        let dominantAxis = ShakeAxisMath.dominantAxis(from: sampleArray)
         guard dominantAxis.dx != 0 || dominantAxis.dy != 0 else { return nil }
         let axisAngle = atan2(dominantAxis.dy, dominantAxis.dx)
 
         // Count reversals along the dominant axis, enforcing angular coherence
-        let result = countReversals(along: dominantAxis, axisAngle: axisAngle)
+        let result = countReversals(samples: sampleArray, along: dominantAxis, axisAngle: axisAngle)
 
         if result.reversals >= requiredReversals {
             lastShakeTimestamp = sample.timestamp
@@ -110,6 +106,12 @@ struct ShakeDetector {
         return nil
     }
 
+    /// Back-compat alias — AppDelegate still calls `addSample`.
+    @discardableResult
+    mutating func addSample(_ sample: MouseSample) -> ShakeEvent? {
+        feed(sample)
+    }
+
     /// Reset all state
     mutating func reset() {
         samples.removeAll()
@@ -126,7 +128,7 @@ struct ShakeDetector {
 
     /// Count direction reversals when movement is projected onto the given axis,
     /// rejecting segments that deviate too far from the axis angle.
-    private func countReversals(along axis: CGVector, axisAngle: CGFloat) -> ReversalResult {
+    private func countReversals(samples: [MouseSample], along axis: CGVector, axisAngle: CGFloat) -> ReversalResult {
         let segments = ShakeAxisMath.buildSegments(from: samples, axis: axis)
 
         // Count reversals: direction changes between consecutive segments
