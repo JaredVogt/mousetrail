@@ -1,6 +1,16 @@
 import Cocoa
 import QuartzCore
 
+/// Fixed trail-rendering constants — values not exposed through settings.
+enum TrailRenderingConfig {
+    /// Point count at which trail reaches its full width.
+    static let fullWidthPointCount: CGFloat = 40
+    /// Centripetal Catmull-Rom alpha.
+    static let interpolationAlpha: CGFloat = 0.5
+    /// Minimum line width for the core trail at the tail.
+    static let baseWidth: CGFloat = 0.5
+}
+
 /**
  * TrailView - Hardware-accelerated view that renders a smooth mouse trail
  *
@@ -10,11 +20,11 @@ import QuartzCore
 class TrailView: NSView {
     /// Maximum number of points to keep in trail
     var maxPoints = 180
-    let fullWidthPointCount: CGFloat = 40
+    let fullWidthPointCount: CGFloat = TrailRenderingConfig.fullWidthPointCount
     var minimumPointDistance: CGFloat = 0.5
     var maximumRenderSegmentLength: CGFloat = 6.0
     var renderSmoothingPasses = 2
-    let interpolationAlpha: CGFloat = 0.5
+    let interpolationAlpha: CGFloat = TrailRenderingConfig.interpolationAlpha
 
     /// Fade time in seconds for core trail
     var fadeTime: TimeInterval = 0.6
@@ -23,7 +33,7 @@ class TrailView: NSView {
     var glowFadeTime: TimeInterval = 0.35
 
     /// Base and max width for trail
-    let baseWidth: CGFloat = 0.5
+    let baseWidth: CGFloat = TrailRenderingConfig.baseWidth
     var maxWidth: CGFloat = 8.0
 
     /// Glow width multiplier

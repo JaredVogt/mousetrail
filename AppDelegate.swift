@@ -1,6 +1,25 @@
 import Cocoa
 import SwiftUI
 
+/// Fixed constants for the spring-based cursor follower.
+enum SpringCursorConfig {
+    static let response: CGFloat = 16.0
+    static let dampingRatio: CGFloat = 1.08
+    static let maxStep: TimeInterval = 1.0 / 240.0
+    static let snapDistance: CGFloat = 240.0
+    static let snapInterval: TimeInterval = 0.15
+}
+
+/// Fixed constants for smooth-mode delayed playback.
+enum SmoothPlaybackConfig {
+    /// Keep the trail slightly behind the real cursor so we can shape it with future samples.
+    static let delay: TimeInterval = 0.075
+    /// Emit synthetic trail points at a higher rate than incoming mouse events.
+    static let sampleInterval: TimeInterval = 1.0 / 240.0
+    /// Keep enough history to interpolate and fade the trail without unbounded growth.
+    static let sampleHistoryDuration: TimeInterval = 1.5
+}
+
 /**
  * AppDelegate - Main application controller
  *
@@ -113,11 +132,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// State for the literal spring-based follower.
     var springCursorState: SpringCursorState?
 
-    let springCursorResponse: CGFloat = 16.0
-    let springCursorDampingRatio: CGFloat = 1.08
-    let springCursorMaxStep: TimeInterval = 1.0 / 240.0
-    let springCursorSnapDistance: CGFloat = 240.0
-    let springCursorSnapInterval: TimeInterval = 0.15
+    let springCursorResponse: CGFloat = SpringCursorConfig.response
+    let springCursorDampingRatio: CGFloat = SpringCursorConfig.dampingRatio
+    let springCursorMaxStep: TimeInterval = SpringCursorConfig.maxStep
+    let springCursorSnapDistance: CGFloat = SpringCursorConfig.snapDistance
+    let springCursorSnapInterval: TimeInterval = SpringCursorConfig.snapInterval
 
     /// Raw cursor samples used for delayed, spline-based trail playback.
     var rawMouseSamples: [MouseSample] = []
@@ -128,14 +147,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Playback cursor position in the raw-sample timeline.
     var visualPlaybackTime: TimeInterval?
 
-    /// Keep the trail slightly behind the real cursor so we can shape it with future samples.
-    let visualPlaybackDelay: TimeInterval = 0.075
-
-    /// Emit synthetic trail points at a higher rate than incoming mouse events.
-    let visualPlaybackSampleInterval: TimeInterval = 1.0 / 240.0
-
-    /// Keep enough history to interpolate and fade the trail without unbounded growth.
-    let rawMouseSampleHistoryDuration: TimeInterval = 1.5
+    let visualPlaybackDelay: TimeInterval = SmoothPlaybackConfig.delay
+    let visualPlaybackSampleInterval: TimeInterval = SmoothPlaybackConfig.sampleInterval
+    let rawMouseSampleHistoryDuration: TimeInterval = SmoothPlaybackConfig.sampleHistoryDuration
 
     /// Idle timeout in seconds
     let idleTimeout: TimeInterval = 0.1
