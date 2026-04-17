@@ -19,7 +19,7 @@ import ScreenCaptureKit
 import SwiftUI
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-16 13:48:40"
+let BUILD_TIMESTAMP = "2026-04-16 18:09:40"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -934,7 +934,7 @@ class RippleEffect {
         // Configure window
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.level = .floating + 1 // Above trail
+        window.level = NSWindow.Level(NSWindow.Level.statusBar.rawValue + 2) // Above trail and menu bar
         window.collectionBehavior = [
             .canJoinAllSpaces,
             .fullScreenAuxiliary,
@@ -1533,43 +1533,22 @@ class RippleManager: NSObject {
         debugLog("Virtual desktop max Y: \(virtualDesktopBounds.maxY)")
         debugLog("Global top-left Y: \(globalTopLeftY)")
         
-        // Now convert to display-relative coordinates
+        // Convert to display-relative coordinates for ScreenCaptureKit (top-left origin)
+        // Use NSScreen frame for Y conversion since click location is in NSScreen coords
+        let matchingScreen = NSScreen.screens.first(where: { $0.frame.contains(rect) })
+        let nsHeight = matchingScreen?.frame.height ?? display.frame.height
+        let nsOriginY = matchingScreen?.frame.origin.y ?? 0.0
+
+        logInfo("NSScreen height: \(nsHeight), SCDisplay height: \(display.frame.height)")
+
         let displayRelativeX = rect.origin.x - display.frame.origin.x
-        
-        // For Y coordinate conversion:
-        // ScreenCaptureKit uses top-left origin (Y=0 at top)
-        // NSScreen uses bottom-left origin (Y=0 at bottom)
-        
-        // First, get the rect position relative to the display
-        let rectYFromDisplayBottom = rect.origin.y - display.frame.origin.y
-        
-        // Then flip to top-left coordinates
-        // The rect's bottom edge is at rectYFromDisplayBottom
-        // So the rect's top edge (in top-left coords) is:
-        var displayRelativeY = display.frame.height - (rectYFromDisplayBottom + rect.height)
-        
-        // HACK: If display has Y offset, try using global coordinates
-        // This suggests ScreenCaptureKit might handle offset displays differently
-        if display.frame.origin.y > 0 {
-            debugLog("WARNING: Display has Y offset of \(display.frame.origin.y), trying alternative calculation")
-            displayRelativeY = display.frame.height - (rect.origin.y + rect.height)
-        }
-        
-        debugLog("=== DETAILED Y CONVERSION ===")
-        debugLog("Display frame: \(display.frame)")
-        debugLog("Display Y offset: \(display.frame.origin.y)")
-        debugLog("Is this Display 0? \(display.frame.origin.y == 0)")
-        debugLog("Click point (global): \(rect.midX), \(rect.midY)")
-        debugLog("Rect global: \(rect)")
-        debugLog("Rect Y from display bottom: \(rectYFromDisplayBottom)")
-        debugLog("Display-relative Y (top-left): \(displayRelativeY)")
-        debugLog("Formula: \(display.frame.height) - (\(rectYFromDisplayBottom) + \(rect.height)) = \(displayRelativeY)")
-        
-        // Let's also test what happens if we ignore the Y offset for Display 1
-        if display.frame.origin.y > 0 {
-            let alternativeY = display.frame.height - (rect.origin.y + rect.height)
-            debugLog("EXPERIMENTAL: What if we use global Y directly? \(alternativeY)")
-        }
+        let rectYFromScreenBottom = rect.origin.y - nsOriginY
+        let displayRelativeY = nsHeight - (rectYFromScreenBottom + rect.height)
+
+        debugLog("=== Y CONVERSION ===")
+        debugLog("NSScreen frame: \(matchingScreen?.frame.debugDescription ?? "nil")")
+        debugLog("SCDisplay frame: \(display.frame)")
+        debugLog("Rect: \(rect), displayRelativeY: \(displayRelativeY)")
         
         let displayRelativeRect = CGRect(
             x: displayRelativeX,
@@ -3001,7 +2980,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Configure window for overlay behavior
             trailWindow.isOpaque = false                    // Allow transparency
             trailWindow.backgroundColor = .clear            // Clear background
-            trailWindow.level = .floating                   // Float above other windows
+            trailWindow.level = NSWindow.Level(NSWindow.Level.statusBar.rawValue + 1)  // Above menu bar
             
             // Collection behaviors control how the window interacts with Spaces and Mission Control
             trailWindow.collectionBehavior = [
