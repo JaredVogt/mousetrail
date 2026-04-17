@@ -26,7 +26,7 @@ enum SmoothPlaybackConfig {
  * Manages the application lifecycle, creates trail overlay windows,
  * handles global event monitoring, and coordinates all UI updates.
  */
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
     /**
      * Application constants organized in a nested enum for clarity
      * These values control the appearance and behavior of the app
@@ -999,6 +999,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Persist current gesture router configuration to UserDefaults.
     func saveGestureSettings() {
         saveGestureConfig(zones: gestureRouter.shakeZones, circleConfig: gestureRouter.circleConfig)
+    }
+
+    // MARK: - SettingsEventBus
+
+    func currentGestureRouter() -> GestureRouter {
+        gestureRouter
+    }
+
+    func updateGestureRouter(_ router: GestureRouter) {
+        gestureRouter = router
+        saveGestureSettings()
+    }
+
+    func currentCalibrationSession() -> CalibrationSession? {
+        calibrationSession
+    }
+
+    func startCalibration() -> CalibrationSession {
+        let session = CalibrationSession()
+        calibrationSession = session
+        return session
     }
 
     /// Execute a gesture action, handling both built-in and external actions.

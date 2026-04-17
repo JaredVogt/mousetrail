@@ -5,18 +5,9 @@ struct MenuBarSettingsView: View {
     @Bindable var settings: TrailSettings
     var liveInfo: LiveInfoModel
     var presetManager: PresetManager
-    var onRequestPermission: () -> Void
-    var onRequestAccessibility: () -> Void
-    var onStartInfoUpdates: () -> Void
-    var onStopInfoUpdates: () -> Void
-    var onShowHelp: () -> Void
-    var onRestart: () -> Void
-    /// Access to gesture router for zone configuration
-    var getGestureRouter: () -> GestureRouter
-    var setGestureRouter: (GestureRouter) -> Void
-    /// Access to calibration session
-    var getCalibrationSession: () -> CalibrationSession?
-    var startCalibration: () -> CalibrationSession
+    /// Dispatches settings actions (permissions, calibration, restart, ...)
+    /// back to the app delegate.
+    unowned var bus: any SettingsEventBus
 
     @State private var debugLogExpanded = false
     @State private var gestureSettingsExpanded = false
@@ -24,11 +15,7 @@ struct MenuBarSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                PermissionsBannerSection(
-                    liveInfo: liveInfo,
-                    onRequestPermission: onRequestPermission,
-                    onRequestAccessibility: onRequestAccessibility
-                )
+                PermissionsBannerSection(liveInfo: liveInfo, bus: bus)
 
                 SystemInfoSection(settings: settings, liveInfo: liveInfo)
 
@@ -38,13 +25,7 @@ struct MenuBarSettingsView: View {
 
                 Divider()
 
-                VisibilitySection(
-                    settings: settings,
-                    getGestureRouter: getGestureRouter,
-                    setGestureRouter: setGestureRouter,
-                    getCalibrationSession: getCalibrationSession,
-                    startCalibration: startCalibration
-                )
+                VisibilitySection(settings: settings, bus: bus)
 
                 Divider()
 
@@ -71,15 +52,14 @@ struct MenuBarSettingsView: View {
                 ActionsAndFooterSection(
                     settings: settings,
                     presetManager: presetManager,
-                    onShowHelp: onShowHelp,
-                    onRestart: onRestart
+                    bus: bus
                 )
             }
             .padding(12)
         }
         .frame(width: 320, height: 700)
-        .onAppear { onStartInfoUpdates() }
-        .onDisappear { onStopInfoUpdates() }
+        .onAppear { bus.startInfoUpdates() }
+        .onDisappear { bus.stopInfoUpdates() }
     }
 }
 
@@ -87,8 +67,7 @@ struct MenuBarSettingsView: View {
 
 private struct PermissionsBannerSection: View {
     var liveInfo: LiveInfoModel
-    var onRequestPermission: () -> Void
-    var onRequestAccessibility: () -> Void
+    unowned var bus: any SettingsEventBus
 
     var body: some View {
         if !liveInfo.screenRecordingGranted || !liveInfo.accessibilityGranted {
@@ -103,7 +82,7 @@ private struct PermissionsBannerSection: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.red)
                         Spacer()
-                        Button("Grant") { onRequestPermission() }
+                        Button("Grant") { bus.requestScreenRecordingPermission() }
                             .controlSize(.small)
                     }
                     Text("Required for ripple effect")
@@ -117,7 +96,7 @@ private struct PermissionsBannerSection: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.red)
                         Spacer()
-                        Button("Grant") { onRequestAccessibility() }
+                        Button("Grant") { bus.requestAccessibilityPermission() }
                             .controlSize(.small)
                     }
                     Text("Required for circle gesture hotkeys")
@@ -182,10 +161,7 @@ private struct SystemInfoSection: View {
 
 private struct VisibilitySection: View {
     @Bindable var settings: TrailSettings
-    var getGestureRouter: () -> GestureRouter
-    var setGestureRouter: (GestureRouter) -> Void
-    var getCalibrationSession: () -> CalibrationSession?
-    var startCalibration: () -> CalibrationSession
+    unowned var bus: any SettingsEventBus
 
     var body: some View {
         SectionHeader("Visibility")
@@ -206,10 +182,10 @@ private struct VisibilitySection: View {
         if settings.isShakeToggleEnabled {
             GestureSettingsSection(
                 settings: settings,
-                getRouter: getGestureRouter,
-                setRouter: setGestureRouter,
-                getCalibrationSession: getCalibrationSession,
-                startCalibration: startCalibration
+                getRouter: { bus.currentGestureRouter() },
+                setRouter: { bus.updateGestureRouter($0) },
+                getCalibrationSession: { bus.currentCalibrationSession() },
+                startCalibration: { bus.startCalibration() }
             )
         }
     }
@@ -427,8 +403,7 @@ private struct DebugLogSection: View {
 private struct ActionsAndFooterSection: View {
     @Bindable var settings: TrailSettings
     var presetManager: PresetManager
-    var onShowHelp: () -> Void
-    var onRestart: () -> Void
+    unowned var bus: any SettingsEventBus
 
     var body: some View {
         HStack {
@@ -448,11 +423,11 @@ private struct ActionsAndFooterSection: View {
         ))
 
         Button("View README") {
-            onShowHelp()
+            bus.showHelpWindow()
         }
 
         Button("Restart") {
-            onRestart()
+            bus.restart()
         }
 
         Button("Quit") {
