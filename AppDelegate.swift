@@ -36,11 +36,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Global event monitor registry; tears down on deinit.
     let eventMonitorHub = EventMonitorHub()
 
-    /// Fallback timer if display-linked updates are unavailable
-    var updateTimer: Timer?
-
-    /// Display-linked animation driver for smooth refresh-synchronized updates
-    var displayLink: CADisplayLink?
+    /// Active animation driver (display-linked when available, timer fallback otherwise).
+    private var animationDriver: AnimationDriver?
 
     // MARK: - Menu Bar Properties
 
@@ -942,34 +939,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setupDisplayLink() {
         stopAnimationDriver()
 
+        let driver: AnimationDriver
         if #available(macOS 14.0, *), let displayWindow = trailWindows.first, displayWindow.isVisible {
-            let link = displayWindow.displayLink(target: self, selector: #selector(handleDisplayLink(_:)))
-            link.add(to: .main, forMode: .common)
-            displayLink = link
-            return
+            driver = DisplayLinkDriver(window: displayWindow)
+        } else {
+            logInfo("Falling back to 60Hz timer because AppKit display links are unavailable")
+            driver = TimerDriver()
         }
-
-        logInfo("Falling back to 60Hz timer because AppKit display links are unavailable")
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+        animationDriver = driver
+        driver.start { [weak self] in
             self?.updateActiveAnimation()
         }
-
-        if let timer = updateTimer {
-            timer.tolerance = 1.0 / 120.0  // half a frame at 60Hz — lets the OS batch wakeups
-            RunLoop.current.add(timer, forMode: .common)
-        }
-    }
-
-    @objc private func handleDisplayLink(_ displayLink: CADisplayLink) {
-        updateActiveAnimation()
     }
 
     private func stopAnimationDriver() {
-        updateTimer?.invalidate()
-        updateTimer = nil
-
-        displayLink?.invalidate()
-        displayLink = nil
+        animationDriver?.stop()
+        animationDriver = nil
         lastTrailRenderTime = 0
     }
 
