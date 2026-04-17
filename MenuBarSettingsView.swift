@@ -24,332 +24,392 @@ struct MenuBarSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                // MARK: - Permissions Banner
-                if !liveInfo.screenRecordingGranted || !liveInfo.accessibilityGranted {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Permissions Needed")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.orange)
+                PermissionsBannerSection(
+                    liveInfo: liveInfo,
+                    onRequestPermission: onRequestPermission,
+                    onRequestAccessibility: onRequestAccessibility
+                )
 
-                        if !liveInfo.screenRecordingGranted {
-                            HStack {
-                                Text("✗ Screen Recording")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.red)
-                                Spacer()
-                                Button("Grant") { onRequestPermission() }
-                                    .controlSize(.small)
-                            }
-                            Text("Required for ripple effect")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if !liveInfo.accessibilityGranted {
-                            HStack {
-                                Text("✗ Accessibility")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.red)
-                                Spacer()
-                                Button("Grant") { onRequestAccessibility() }
-                                    .controlSize(.small)
-                            }
-                            Text("Required for circle gesture hotkeys")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(8)
-                    .background(.orange.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.orange.opacity(0.3)))
-                }
-
-                // MARK: - System Info
-                Toggle("Show System Info", isOn: $settings.isInfoPanelVisible)
-
-                if settings.isInfoPanelVisible {
-                    VStack(alignment: .leading, spacing: 3) {
-                        InfoLine("Build", value: liveInfo.buildTimestamp)
-                        InfoLine("Mouse", value: "x:\(liveInfo.mouseX) y:\(liveInfo.mouseY)")
-                        InfoLine("Active", value: liveInfo.frontmostApp)
-                        HStack(spacing: 4) {
-                            Text("Screen Recording:")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                            Text(liveInfo.screenRecordingGranted ? "✓ Granted" : "✗ Denied")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(liveInfo.screenRecordingGranted ? .green : .red)
-                        }
-                        HStack(spacing: 4) {
-                            Text("Accessibility:")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                            Text(liveInfo.accessibilityGranted ? "✓ Granted" : "✗ Denied")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(liveInfo.accessibilityGranted ? .green : .red)
-                        }
-                        InfoLine("Screens", value: "\(liveInfo.screenCount)")
-                        ForEach(liveInfo.screenDescriptions, id: \.self) { desc in
-                            Text(desc)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 8)
-                        }
-                    }
-                    .padding(8)
-                    .background(.black.opacity(0.3))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                }
+                SystemInfoSection(settings: settings, liveInfo: liveInfo)
 
                 Divider()
 
-                // MARK: - Presets
                 PresetSectionView(settings: settings, presetManager: presetManager)
 
                 Divider()
 
-                // MARK: - Visibility
-                SectionHeader("Visibility")
-                Toggle("Show Trail", isOn: $settings.isTrailVisible)
-                Toggle("Crosshair Lines", isOn: $settings.isCrosshairVisible)
-                if settings.isCrosshairVisible {
-                    InlineColorEditor("Crosshair Color",
-                        r: $settings.crosshairR,
-                        g: $settings.crosshairG,
-                        b: $settings.crosshairB)
-                    SettingsSlider("Opacity", value: $settings.crosshairOpacity, range: 0.05...1.0, format: "%.2f")
-                    SettingsSlider("Line Width", value: $settings.crosshairLineWidth, range: 0.5...5.0, format: "%.1f px")
-                }
-                Toggle("Ripple Effect", isOn: $settings.isRippleEnabled)
-                Toggle("Shake Gestures", isOn: $settings.isShakeToggleEnabled)
-                    .help("Enable directional shake gestures to trigger actions")
-
-                if settings.isShakeToggleEnabled {
-                    GestureSettingsSection(
-                        settings: settings,
-                        getRouter: getGestureRouter,
-                        setRouter: setGestureRouter,
-                        getCalibrationSession: getCalibrationSession,
-                        startCalibration: startCalibration
-                    )
-                }
+                VisibilitySection(
+                    settings: settings,
+                    getGestureRouter: getGestureRouter,
+                    setGestureRouter: setGestureRouter,
+                    getCalibrationSession: getCalibrationSession,
+                    startCalibration: startCalibration
+                )
 
                 Divider()
 
-                // MARK: - Trail Motion
-                SectionHeader("Trail Motion")
-                Picker("Algorithm", selection: $settings.trailAlgorithm) {
-                    ForEach(TrailAlgorithm.allCases, id: \.self) { algorithm in
-                        Text(algorithm.displayName).tag(algorithm)
-                    }
-                }
-                .pickerStyle(.segmented)
+                TrailMotionSection(settings: settings)
 
                 Divider()
 
-                // MARK: - Trail Width
-                SectionHeader("Trail Width")
-                SettingsSlider("Max Width", value: $settings.maxWidth, range: 1...20, format: "%.1f")
-                SettingsSlider("Glow Multiplier", value: $settings.glowWidthMultiplier, range: 0.5...8.0, format: "%.1fx")
+                TrailColorsSection(settings: settings)
 
                 Divider()
 
-                // MARK: - Movement
-                SectionHeader("Movement")
-                SettingsSlider("Threshold", value: $settings.movementThreshold, range: 5...100, format: "%.0f px")
-                SettingsSlider("Min Velocity", value: $settings.minimumVelocity, range: 0...200, format: "%.0f px/s")
+                RippleSection(settings: settings)
 
                 Divider()
 
-                // MARK: - Fade Duration
-                SectionHeader("Fade Duration")
-                SettingsSlider("Core Trail", value: $settings.coreFadeTime, range: 0.1...3.0, format: "%.2f s")
-                SettingsSlider("Glow Trail", value: $settings.glowFadeTime, range: 0.1...2.0, format: "%.2f s")
+                PerformanceExperimentsSection(settings: settings)
 
                 Divider()
 
-                // MARK: - Colors
-                SectionHeader("Trail Colors")
-                InlineColorEditor("Core Trail",
-                    r: $settings.coreTrailR,
-                    g: $settings.coreTrailG,
-                    b: $settings.coreTrailB)
-                InlineColorEditor("Glow Trail",
-                    r: $settings.glowTrailR,
-                    g: $settings.glowTrailG,
-                    b: $settings.glowTrailB)
+                DebugLogSection(settings: settings, debugLogExpanded: $debugLogExpanded)
 
                 Divider()
 
-                // MARK: - Glow Trail Opacity
-                SectionHeader("Glow Opacity")
-                SettingsSlider("Outer Glow", value: $settings.glowOuterOpacity, range: 0.005...0.15, format: "%.3f")
-                SettingsSlider("Middle Glow", value: $settings.glowMiddleOpacity, range: 0.02...0.5, format: "%.3f")
-
-                Divider()
-
-                // MARK: - Ripple Settings
-                SectionHeader("Ripple Effect")
-                SettingsSlider("Radius", value: $settings.rippleRadius, range: 50...400, format: "%.0f px")
-                SettingsSlider("Speed", value: $settings.rippleSpeed, range: 30...400, format: "%.0f px/s")
-                SettingsSlider("Wavelength", value: $settings.rippleWavelength, range: 5...80, format: "%.0f px")
-                SettingsSlider("Damping", value: $settings.rippleDamping, range: 0.5...6.0, format: "%.1f")
-                SettingsSlider("Amplitude", value: $settings.rippleAmplitude, range: 2...30, format: "%.0f px")
-                SettingsSlider("Duration", value: $settings.rippleDuration, range: 0.3...3.0, format: "%.1f s")
-                SettingsSlider("Specular", value: $settings.rippleSpecularIntensity, range: 0...2.0, format: "%.2f")
-
-                Divider()
-
-                // MARK: - Performance Experiments
-                DisclosureGroup("Performance Experiments") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Toggle one experiment at a time to compare CPU cost against visual impact.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        PerformanceExperimentToggle(
-                            "Reduce synthetic sample rate",
-                            description: "Drop synthetic trail emission from 240 Hz to 120 Hz.",
-                            isOn: $settings.reduceSyntheticSampleRate
-                        )
-                        PerformanceExperimentToggle(
-                            "Enable smooth input coalescing",
-                            description: "Keep coalesced mouse events on in smooth mode.",
-                            isOn: $settings.enableSmoothInputCoalescing
-                        )
-                        PerformanceExperimentToggle(
-                            "Use reduced layer stack",
-                            description: "Skip the outer glow layers and render a cheaper trail stack.",
-                            isOn: $settings.useReducedLayerStack
-                        )
-                        PerformanceExperimentToggle(
-                            "Only update dirty screens",
-                            description: "Render only screens that still have active trail content.",
-                            isOn: $settings.onlyUpdateDirtyScreens
-                        )
-                        PerformanceExperimentToggle(
-                            "Use linear smooth playback lookup",
-                            description: "Avoid rescanning the raw sample array from the beginning.",
-                            isOn: $settings.useLinearSmoothPlaybackLookup
-                        )
-                        PerformanceExperimentToggle(
-                            "Use stronger point decimation",
-                            description: "Accept fewer points before rebuilding the path.",
-                            isOn: $settings.useStrongerPointDecimation
-                        )
-                        PerformanceExperimentToggle(
-                            "Use relaxed path rebuild",
-                            description: "Use fewer points and lighter smoothing when fitting the trail path.",
-                            isOn: $settings.useRelaxedPathRebuild
-                        )
-                        PerformanceExperimentToggle(
-                            "Cap trail rendering to 60 FPS",
-                            description: "Throttle path rebuilds while leaving input processing live.",
-                            isOn: $settings.capTrailRenderingTo60FPS
-                        )
-
-                        HStack {
-                            Button("All Off") {
-                                settings.setAllPerformanceExperiments(enabled: false)
-                            }
-                            Button("All On") {
-                                settings.setAllPerformanceExperiments(enabled: true)
-                            }
-                            Spacer()
-                        }
-                        .controlSize(.small)
-                    }
-                    .padding(.top, 4)
-                }
-
-                Divider()
-
-                // MARK: - Debug Log
-                Picker("Log Level", selection: $settings.logLevelRaw) {
-                    ForEach(LogLevel.allCases, id: \.rawValue) { level in
-                        Text(level.label).tag(level.rawValue)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                DisclosureGroup("Debug Log", isExpanded: $debugLogExpanded) {
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(LogFileViewer.shared.lines.reversed()) { line in
-                                    Text(line.text)
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundStyle(logLineColor(line.kind))
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .id(line.id)
-                                }
-                            }
-                            .textSelection(.enabled)
-                            .padding(4)
-                        }
-                        .onChange(of: LogFileViewer.shared.lines.last?.id) { _, newID in
-                            if let id = newID {
-                                withAnimation { proxy.scrollTo(id, anchor: .top) }
-                            }
-                        }
-                    }
-                    .frame(height: 150)
-                    .background(Color.black)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-
-                    HStack {
-                        Button("Clear") {
-                            LogFileViewer.shared.clear()
-                        }
-                        Button("Copy") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(
-                                LogFileViewer.shared.getAllText(), forType: .string)
-                        }
-                        Spacer()
-                    }
-                }
-
-                Divider()
-
-                // MARK: - Actions
-                HStack {
-                    Button("Reset to Defaults") {
-                        settings.resetToDefaults()
-                        presetManager.activePresetID = nil
-                        presetManager.takeCleanSnapshot(from: settings)
-                    }
-                    Spacer()
-                }
-
-                Divider()
-
-                // MARK: - Footer
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { LaunchAtLoginService.shared.isEnabled },
-                    set: { _ in LaunchAtLoginService.shared.toggle() }
-                ))
-
-                Button("View README") {
-                    onShowHelp()
-                }
-
-                Button("Restart") {
-                    onRestart()
-                }
-
-                Button("Quit") {
-                    NSApplication.shared.terminate(nil)
-                }
-                .keyboardShortcut("q")
+                ActionsAndFooterSection(
+                    settings: settings,
+                    presetManager: presetManager,
+                    onShowHelp: onShowHelp,
+                    onRestart: onRestart
+                )
             }
             .padding(12)
         }
         .frame(width: 320, height: 700)
         .onAppear { onStartInfoUpdates() }
         .onDisappear { onStopInfoUpdates() }
+    }
+}
+
+// MARK: - Permissions Banner
+
+private struct PermissionsBannerSection: View {
+    var liveInfo: LiveInfoModel
+    var onRequestPermission: () -> Void
+    var onRequestAccessibility: () -> Void
+
+    var body: some View {
+        if !liveInfo.screenRecordingGranted || !liveInfo.accessibilityGranted {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Permissions Needed")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.orange)
+
+                if !liveInfo.screenRecordingGranted {
+                    HStack {
+                        Text("✗ Screen Recording")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.red)
+                        Spacer()
+                        Button("Grant") { onRequestPermission() }
+                            .controlSize(.small)
+                    }
+                    Text("Required for ripple effect")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if !liveInfo.accessibilityGranted {
+                    HStack {
+                        Text("✗ Accessibility")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.red)
+                        Spacer()
+                        Button("Grant") { onRequestAccessibility() }
+                            .controlSize(.small)
+                    }
+                    Text("Required for circle gesture hotkeys")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(8)
+            .background(.orange.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.orange.opacity(0.3)))
+        }
+    }
+}
+
+// MARK: - System Info
+
+private struct SystemInfoSection: View {
+    @Bindable var settings: TrailSettings
+    var liveInfo: LiveInfoModel
+
+    var body: some View {
+        Toggle("Show System Info", isOn: $settings.isInfoPanelVisible)
+
+        if settings.isInfoPanelVisible {
+            VStack(alignment: .leading, spacing: 3) {
+                InfoLine("Build", value: liveInfo.buildTimestamp)
+                InfoLine("Mouse", value: "x:\(liveInfo.mouseX) y:\(liveInfo.mouseY)")
+                InfoLine("Active", value: liveInfo.frontmostApp)
+                HStack(spacing: 4) {
+                    Text("Screen Recording:")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text(liveInfo.screenRecordingGranted ? "✓ Granted" : "✗ Denied")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(liveInfo.screenRecordingGranted ? .green : .red)
+                }
+                HStack(spacing: 4) {
+                    Text("Accessibility:")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text(liveInfo.accessibilityGranted ? "✓ Granted" : "✗ Denied")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(liveInfo.accessibilityGranted ? .green : .red)
+                }
+                InfoLine("Screens", value: "\(liveInfo.screenCount)")
+                ForEach(liveInfo.screenDescriptions, id: \.self) { desc in
+                    Text(desc)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 8)
+                }
+            }
+            .padding(8)
+            .background(.black.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+    }
+}
+
+// MARK: - Visibility
+
+private struct VisibilitySection: View {
+    @Bindable var settings: TrailSettings
+    var getGestureRouter: () -> GestureRouter
+    var setGestureRouter: (GestureRouter) -> Void
+    var getCalibrationSession: () -> CalibrationSession?
+    var startCalibration: () -> CalibrationSession
+
+    var body: some View {
+        SectionHeader("Visibility")
+        Toggle("Show Trail", isOn: $settings.isTrailVisible)
+        Toggle("Crosshair Lines", isOn: $settings.isCrosshairVisible)
+        if settings.isCrosshairVisible {
+            InlineColorEditor("Crosshair Color",
+                r: $settings.crosshairR,
+                g: $settings.crosshairG,
+                b: $settings.crosshairB)
+            SettingsSlider("Opacity", value: $settings.crosshairOpacity, range: 0.05...1.0, format: "%.2f")
+            SettingsSlider("Line Width", value: $settings.crosshairLineWidth, range: 0.5...5.0, format: "%.1f px")
+        }
+        Toggle("Ripple Effect", isOn: $settings.isRippleEnabled)
+        Toggle("Shake Gestures", isOn: $settings.isShakeToggleEnabled)
+            .help("Enable directional shake gestures to trigger actions")
+
+        if settings.isShakeToggleEnabled {
+            GestureSettingsSection(
+                settings: settings,
+                getRouter: getGestureRouter,
+                setRouter: setGestureRouter,
+                getCalibrationSession: getCalibrationSession,
+                startCalibration: startCalibration
+            )
+        }
+    }
+}
+
+// MARK: - Trail Motion
+
+private struct TrailMotionSection: View {
+    @Bindable var settings: TrailSettings
+
+    var body: some View {
+        SectionHeader("Trail Motion")
+        Picker("Algorithm", selection: $settings.trailAlgorithm) {
+            ForEach(TrailAlgorithm.allCases, id: \.self) { algorithm in
+                Text(algorithm.displayName).tag(algorithm)
+            }
+        }
+        .pickerStyle(.segmented)
+
+        Divider()
+
+        SectionHeader("Trail Width")
+        SettingsSlider("Max Width", value: $settings.maxWidth, range: 1...20, format: "%.1f")
+        SettingsSlider("Glow Multiplier", value: $settings.glowWidthMultiplier, range: 0.5...8.0, format: "%.1fx")
+
+        Divider()
+
+        SectionHeader("Movement")
+        SettingsSlider("Threshold", value: $settings.movementThreshold, range: 5...100, format: "%.0f px")
+        SettingsSlider("Min Velocity", value: $settings.minimumVelocity, range: 0...200, format: "%.0f px/s")
+
+        Divider()
+
+        SectionHeader("Fade Duration")
+        SettingsSlider("Core Trail", value: $settings.coreFadeTime, range: 0.1...3.0, format: "%.2f s")
+        SettingsSlider("Glow Trail", value: $settings.glowFadeTime, range: 0.1...2.0, format: "%.2f s")
+    }
+}
+
+// MARK: - Trail Colors
+
+private struct TrailColorsSection: View {
+    @Bindable var settings: TrailSettings
+
+    var body: some View {
+        SectionHeader("Trail Colors")
+        InlineColorEditor("Core Trail",
+            r: $settings.coreTrailR,
+            g: $settings.coreTrailG,
+            b: $settings.coreTrailB)
+        InlineColorEditor("Glow Trail",
+            r: $settings.glowTrailR,
+            g: $settings.glowTrailG,
+            b: $settings.glowTrailB)
+
+        Divider()
+
+        SectionHeader("Glow Opacity")
+        SettingsSlider("Outer Glow", value: $settings.glowOuterOpacity, range: 0.005...0.15, format: "%.3f")
+        SettingsSlider("Middle Glow", value: $settings.glowMiddleOpacity, range: 0.02...0.5, format: "%.3f")
+    }
+}
+
+// MARK: - Ripple
+
+private struct RippleSection: View {
+    @Bindable var settings: TrailSettings
+
+    var body: some View {
+        SectionHeader("Ripple Effect")
+        SettingsSlider("Radius", value: $settings.rippleRadius, range: 50...400, format: "%.0f px")
+        SettingsSlider("Speed", value: $settings.rippleSpeed, range: 30...400, format: "%.0f px/s")
+        SettingsSlider("Wavelength", value: $settings.rippleWavelength, range: 5...80, format: "%.0f px")
+        SettingsSlider("Damping", value: $settings.rippleDamping, range: 0.5...6.0, format: "%.1f")
+        SettingsSlider("Amplitude", value: $settings.rippleAmplitude, range: 2...30, format: "%.0f px")
+        SettingsSlider("Duration", value: $settings.rippleDuration, range: 0.3...3.0, format: "%.1f s")
+        SettingsSlider("Specular", value: $settings.rippleSpecularIntensity, range: 0...2.0, format: "%.2f")
+    }
+}
+
+// MARK: - Performance Experiments
+
+private struct PerformanceExperimentsSection: View {
+    @Bindable var settings: TrailSettings
+
+    var body: some View {
+        DisclosureGroup("Performance Experiments") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Toggle one experiment at a time to compare CPU cost against visual impact.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                PerformanceExperimentToggle(
+                    "Reduce synthetic sample rate",
+                    description: "Drop synthetic trail emission from 240 Hz to 120 Hz.",
+                    isOn: $settings.reduceSyntheticSampleRate
+                )
+                PerformanceExperimentToggle(
+                    "Enable smooth input coalescing",
+                    description: "Keep coalesced mouse events on in smooth mode.",
+                    isOn: $settings.enableSmoothInputCoalescing
+                )
+                PerformanceExperimentToggle(
+                    "Use reduced layer stack",
+                    description: "Skip the outer glow layers and render a cheaper trail stack.",
+                    isOn: $settings.useReducedLayerStack
+                )
+                PerformanceExperimentToggle(
+                    "Only update dirty screens",
+                    description: "Render only screens that still have active trail content.",
+                    isOn: $settings.onlyUpdateDirtyScreens
+                )
+                PerformanceExperimentToggle(
+                    "Use linear smooth playback lookup",
+                    description: "Avoid rescanning the raw sample array from the beginning.",
+                    isOn: $settings.useLinearSmoothPlaybackLookup
+                )
+                PerformanceExperimentToggle(
+                    "Use stronger point decimation",
+                    description: "Accept fewer points before rebuilding the path.",
+                    isOn: $settings.useStrongerPointDecimation
+                )
+                PerformanceExperimentToggle(
+                    "Use relaxed path rebuild",
+                    description: "Use fewer points and lighter smoothing when fitting the trail path.",
+                    isOn: $settings.useRelaxedPathRebuild
+                )
+                PerformanceExperimentToggle(
+                    "Cap trail rendering to 60 FPS",
+                    description: "Throttle path rebuilds while leaving input processing live.",
+                    isOn: $settings.capTrailRenderingTo60FPS
+                )
+
+                HStack {
+                    Button("All Off") {
+                        settings.setAllPerformanceExperiments(enabled: false)
+                    }
+                    Button("All On") {
+                        settings.setAllPerformanceExperiments(enabled: true)
+                    }
+                    Spacer()
+                }
+                .controlSize(.small)
+            }
+            .padding(.top, 4)
+        }
+    }
+}
+
+// MARK: - Debug Log
+
+private struct DebugLogSection: View {
+    @Bindable var settings: TrailSettings
+    @Binding var debugLogExpanded: Bool
+
+    var body: some View {
+        Picker("Log Level", selection: $settings.logLevelRaw) {
+            ForEach(LogLevel.allCases, id: \.rawValue) { level in
+                Text(level.label).tag(level.rawValue)
+            }
+        }
+        .pickerStyle(.segmented)
+
+        DisclosureGroup("Debug Log", isExpanded: $debugLogExpanded) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(LogFileViewer.shared.lines.reversed()) { line in
+                            Text(line.text)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(logLineColor(line.kind))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .id(line.id)
+                        }
+                    }
+                    .textSelection(.enabled)
+                    .padding(4)
+                }
+                .onChange(of: LogFileViewer.shared.lines.last?.id) { _, newID in
+                    if let id = newID {
+                        withAnimation { proxy.scrollTo(id, anchor: .top) }
+                    }
+                }
+            }
+            .frame(height: 150)
+            .background(Color.black)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+
+            HStack {
+                Button("Clear") {
+                    LogFileViewer.shared.clear()
+                }
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(
+                        LogFileViewer.shared.getAllText(), forType: .string)
+                }
+                Spacer()
+            }
+        }
     }
 
     private func logLineColor(_ kind: LogFileViewer.LogLine.Kind) -> Color {
@@ -359,6 +419,46 @@ struct MenuBarSettingsView: View {
         case .debug: return .gray
         case .info: return .green
         }
+    }
+}
+
+// MARK: - Actions & Footer
+
+private struct ActionsAndFooterSection: View {
+    @Bindable var settings: TrailSettings
+    var presetManager: PresetManager
+    var onShowHelp: () -> Void
+    var onRestart: () -> Void
+
+    var body: some View {
+        HStack {
+            Button("Reset to Defaults") {
+                settings.resetToDefaults()
+                presetManager.activePresetID = nil
+                presetManager.takeCleanSnapshot(from: settings)
+            }
+            Spacer()
+        }
+
+        Divider()
+
+        Toggle("Launch at Login", isOn: Binding(
+            get: { LaunchAtLoginService.shared.isEnabled },
+            set: { _ in LaunchAtLoginService.shared.toggle() }
+        ))
+
+        Button("View README") {
+            onShowHelp()
+        }
+
+        Button("Restart") {
+            onRestart()
+        }
+
+        Button("Quit") {
+            NSApplication.shared.terminate(nil)
+        }
+        .keyboardShortcut("q")
     }
 }
 

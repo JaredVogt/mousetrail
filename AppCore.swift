@@ -5,7 +5,7 @@
 import Cocoa
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-17 00:11:00"
+let BUILD_TIMESTAMP = "2026-04-17 00:13:58"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
