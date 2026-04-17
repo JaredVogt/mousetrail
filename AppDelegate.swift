@@ -59,11 +59,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Trail Animation Properties
 
-    /// Windows containing the trail (one per screen)
-    var trailWindows: [NSPanel] = []
+    /// Manages per-screen trail overlay windows and views.
+    let trailWindowManager = TrailWindowManager()
 
-    /// The trail views (one per screen)
-    var trailViews: [TrailView] = []
+    var trailWindows: [NSPanel] { trailWindowManager.windows }
+    var trailViews: [TrailView] { trailWindowManager.views }
 
     // MARK: - Ripple Effect Properties
 
@@ -163,7 +163,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let maxPendingMouseSamples = 256
 
     /// Trail views that received content recently and still need rendering.
-    var dirtyTrailViewIndices: Set<Int> = []
+    var dirtyTrailViewIndices: Set<Int> {
+        get { trailWindowManager.dirtyIndices }
+        set { trailWindowManager.dirtyIndices = newValue }
+    }
 
     /// Timestamp of the last trail path rebuild.
     var lastTrailRenderTime: TimeInterval = 0
@@ -1198,67 +1201,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /**
      * Creates separate trail overlay windows for each screen
      *
-     * Each window is configured to:
-     * - Be completely click-through (no mouse interaction)
-     * - Cover its specific screen
-     * - Use hardware-accelerated rendering via CAShapeLayer
-     * - Stay visible on all spaces and over full-screen apps
+     * Each window is configured to be click-through, cover its specific
+     * screen, render via CAShapeLayer, and stay visible on all spaces /
+     * over full-screen apps. Window lifecycle lives in TrailWindowManager.
      */
     func createTrailWindows() {
-        // Clear any existing windows
-        for window in trailWindows {
-            window.close()
-        }
-        trailWindows.removeAll()
-        trailViews.removeAll()
-        dirtyTrailViewIndices.removeAll()
-
-        // Create a window for each screen
-        for screen in NSScreen.screens {
-            let screenFrame = screen.frame
-
-            // Create window for this screen
-            let trailWindow = NSPanel(
-                contentRect: screenFrame,
-                styleMask: [.borderless, .nonactivatingPanel],
-                backing: .buffered,
-                defer: false
-            )
-
-            // Configure window for overlay behavior
-            trailWindow.isOpaque = false                    // Allow transparency
-            trailWindow.backgroundColor = .clear            // Clear background
-            trailWindow.level = NSWindow.Level(NSWindow.Level.statusBar.rawValue + 1)  // Above menu bar
-
-            // Collection behaviors control how the window interacts with Spaces and Mission Control
-            trailWindow.collectionBehavior = [
-                .canJoinAllSpaces,                        // Visible on all spaces/desktops
-                .fullScreenAuxiliary,                     // Visible over full-screen apps
-                .transient,                               // Don't show in window list or App Exposé
-                .ignoresCycle,                            // Don't participate in Cmd+Tab cycling
-                .stationary                               // Don't move with spaces transitions
-            ]
-            trailWindow.hidesOnDeactivate = false          // Stay visible when app loses focus
-            trailWindow.ignoresMouseEvents = true          // Click-through
-            trailWindow.hasShadow = false                  // No window shadow
-            trailWindow.isReleasedWhenClosed = false       // Don't release when closed
-
-            // Create the trail view for this screen
-            let viewBounds = NSRect(x: 0, y: 0, width: screenFrame.width, height: screenFrame.height)
-            let trailView = TrailView(frame: viewBounds)
-            trailView.wantsLayer = true
+        trailWindowManager.rebuild(
+            initiallyVisible: isTrailVisible || settings.isCrosshairVisible
+        ) { trailView in
             applyCurrentTrailConfiguration(to: trailView)
-
-            trailWindow.contentView = trailView
-
-            // Only show if trails or crosshairs are enabled
-            if isTrailVisible || settings.isCrosshairVisible {
-                trailWindow.orderFront(nil)
-            }
-
-            // Store references
-            trailWindows.append(trailWindow)
-            trailViews.append(trailView)
         }
     }
 
@@ -1298,11 +1249,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         eventMonitorHub.removeAll()
 
-        for window in trailWindows {
-            window.close()
-        }
-        trailWindows.removeAll()
-        trailViews.removeAll()
+        trailWindowManager.cleanup()
 
         rippleManager?.cleanup()
 
