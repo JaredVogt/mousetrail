@@ -14,6 +14,83 @@ enum TrailAlgorithm: String, CaseIterable, Codable {
     }
 }
 
+/// Single source of truth for `TrailSettings` default values.
+enum TrailSettingsDefaults {
+    // Visibility
+    static let isTrailVisible = true
+    static let isInfoPanelVisible = false
+    static let isRippleEnabled = false
+    static let isCrosshairVisible = false
+    static let isShakeToggleEnabled = false
+    static let logLevelRaw = 1
+
+    // Shake detector
+    static let shakeTimeWindow = 0.5
+    static let shakeRequiredReversals = 3
+    static let shakeMinDisplacement = 50.0
+    static let shakeMinVelocity = 800.0
+    static let shakeCooldown = 1.0
+    static let shakeAngularTolerance = 45.0
+
+    // Circle detector
+    static let circleTimeWindow = 3.0
+    static let circleSampleWindow = 1.5
+    static let circleMinRadius = 30.0
+    static let circleMinSpeed = 200.0
+    static let circleCooldown = 2.0
+    static let circleRequiredCircles = 2
+    static let circleMaxRadiusVariance = 3.0
+
+    // Trail appearance
+    static let maxWidth = 8.0
+    static let glowWidthMultiplier = 3.5
+    static let trailAlgorithm: TrailAlgorithm = .smooth
+    static let movementThreshold = 30.0
+    static let minimumVelocity = 0.0
+    static let coreFadeTime = 0.6
+    static let glowFadeTime = 0.35
+
+    // Core color
+    static let coreTrailR = 1.0
+    static let coreTrailG = 0.15
+    static let coreTrailB = 0.1
+
+    // Glow color
+    static let glowTrailR = 0.1
+    static let glowTrailG = 0.5
+    static let glowTrailB = 1.0
+
+    // Glow opacity
+    static let glowOuterOpacity = 0.02
+    static let glowMiddleOpacity = 0.08
+
+    // Crosshair
+    static let crosshairR = 1.0
+    static let crosshairG = 1.0
+    static let crosshairB = 1.0
+    static let crosshairOpacity = 0.3
+    static let crosshairLineWidth = 1.0
+
+    // Ripple
+    static let rippleRadius = 150.0
+    static let rippleSpeed = 120.0
+    static let rippleWavelength = 25.0
+    static let rippleDamping = 2.0
+    static let rippleAmplitude = 12.0
+    static let rippleDuration = 1.2
+    static let rippleSpecularIntensity = 0.8
+
+    // Performance experiments
+    static let reduceSyntheticSampleRate = false
+    static let enableSmoothInputCoalescing = false
+    static let useReducedLayerStack = false
+    static let onlyUpdateDirtyScreens = false
+    static let useLinearSmoothPlaybackLookup = false
+    static let useStrongerPointDecimation = false
+    static let useRelaxedPathRebuild = false
+    static let capTrailRenderingTo60FPS = false
+}
+
 @Observable
 class TrailSettings {
     /// Callback when trail appearance settings change
@@ -23,99 +100,99 @@ class TrailSettings {
 
     // MARK: - Visibility
 
-    var isTrailVisible = true { didSet { save(); onVisibilityChanged?() } }
-    var isInfoPanelVisible = false { didSet { save(); onVisibilityChanged?() } }
-    var isRippleEnabled = false { didSet { save(); onVisibilityChanged?() } }
-    var isCrosshairVisible = false { didSet { save(); onVisibilityChanged?() } }
-    var isShakeToggleEnabled = false { didSet { save() } }
-    var logLevelRaw = 1 { didSet { save(); currentLogLevel = LogLevel(rawValue: logLevelRaw) ?? .info } }
+    var isTrailVisible = TrailSettingsDefaults.isTrailVisible { didSet { save(); onVisibilityChanged?() } }
+    var isInfoPanelVisible = TrailSettingsDefaults.isInfoPanelVisible { didSet { save(); onVisibilityChanged?() } }
+    var isRippleEnabled = TrailSettingsDefaults.isRippleEnabled { didSet { save(); onVisibilityChanged?() } }
+    var isCrosshairVisible = TrailSettingsDefaults.isCrosshairVisible { didSet { save(); onVisibilityChanged?() } }
+    var isShakeToggleEnabled = TrailSettingsDefaults.isShakeToggleEnabled { didSet { save() } }
+    var logLevelRaw = TrailSettingsDefaults.logLevelRaw { didSet { save(); currentLogLevel = LogLevel(rawValue: logLevelRaw) ?? .info } }
 
     // MARK: - Shake Detector Parameters
 
     /// Callback when gesture detector parameters change
     var onGestureParamsChanged: (() -> Void)?
 
-    var shakeTimeWindow = 0.5 { didSet { save(); onGestureParamsChanged?() } }
-    var shakeRequiredReversals = 3 { didSet { save(); onGestureParamsChanged?() } }
-    var shakeMinDisplacement = 50.0 { didSet { save(); onGestureParamsChanged?() } }
-    var shakeMinVelocity = 800.0 { didSet { save(); onGestureParamsChanged?() } }
-    var shakeCooldown = 1.0 { didSet { save(); onGestureParamsChanged?() } }
-    var shakeAngularTolerance = 45.0 { didSet { save(); onGestureParamsChanged?() } }
+    var shakeTimeWindow = TrailSettingsDefaults.shakeTimeWindow { didSet { save(); onGestureParamsChanged?() } }
+    var shakeRequiredReversals = TrailSettingsDefaults.shakeRequiredReversals { didSet { save(); onGestureParamsChanged?() } }
+    var shakeMinDisplacement = TrailSettingsDefaults.shakeMinDisplacement { didSet { save(); onGestureParamsChanged?() } }
+    var shakeMinVelocity = TrailSettingsDefaults.shakeMinVelocity { didSet { save(); onGestureParamsChanged?() } }
+    var shakeCooldown = TrailSettingsDefaults.shakeCooldown { didSet { save(); onGestureParamsChanged?() } }
+    var shakeAngularTolerance = TrailSettingsDefaults.shakeAngularTolerance { didSet { save(); onGestureParamsChanged?() } }
 
     // MARK: - Circle Detector Parameters
 
-    var circleTimeWindow = 3.0 { didSet { save(); onGestureParamsChanged?() } }
-    var circleSampleWindow = 1.5 { didSet { save(); onGestureParamsChanged?() } }
-    var circleMinRadius = 30.0 { didSet { save(); onGestureParamsChanged?() } }
-    var circleMinSpeed = 200.0 { didSet { save(); onGestureParamsChanged?() } }
-    var circleCooldown = 2.0 { didSet { save(); onGestureParamsChanged?() } }
-    var circleRequiredCircles = 2 { didSet { save(); onGestureParamsChanged?() } }
-    var circleMaxRadiusVariance = 3.0 { didSet { save(); onGestureParamsChanged?() } }
+    var circleTimeWindow = TrailSettingsDefaults.circleTimeWindow { didSet { save(); onGestureParamsChanged?() } }
+    var circleSampleWindow = TrailSettingsDefaults.circleSampleWindow { didSet { save(); onGestureParamsChanged?() } }
+    var circleMinRadius = TrailSettingsDefaults.circleMinRadius { didSet { save(); onGestureParamsChanged?() } }
+    var circleMinSpeed = TrailSettingsDefaults.circleMinSpeed { didSet { save(); onGestureParamsChanged?() } }
+    var circleCooldown = TrailSettingsDefaults.circleCooldown { didSet { save(); onGestureParamsChanged?() } }
+    var circleRequiredCircles = TrailSettingsDefaults.circleRequiredCircles { didSet { save(); onGestureParamsChanged?() } }
+    var circleMaxRadiusVariance = TrailSettingsDefaults.circleMaxRadiusVariance { didSet { save(); onGestureParamsChanged?() } }
 
     // MARK: - Trail Width
 
-    var maxWidth = 8.0 { didSet { save(); onChanged?() } }
-    var glowWidthMultiplier = 3.5 { didSet { save(); onChanged?() } }
+    var maxWidth = TrailSettingsDefaults.maxWidth { didSet { save(); onChanged?() } }
+    var glowWidthMultiplier = TrailSettingsDefaults.glowWidthMultiplier { didSet { save(); onChanged?() } }
 
     // MARK: - Trail Motion
 
-    var trailAlgorithm: TrailAlgorithm = .smooth { didSet { save(); onChanged?() } }
+    var trailAlgorithm: TrailAlgorithm = TrailSettingsDefaults.trailAlgorithm { didSet { save(); onChanged?() } }
 
     // MARK: - Movement
 
-    var movementThreshold = 30.0 { didSet { save(); onChanged?() } }
-    var minimumVelocity = 0.0 { didSet { save(); onChanged?() } }
+    var movementThreshold = TrailSettingsDefaults.movementThreshold { didSet { save(); onChanged?() } }
+    var minimumVelocity = TrailSettingsDefaults.minimumVelocity { didSet { save(); onChanged?() } }
 
     // MARK: - Fade Duration
 
-    var coreFadeTime = 0.6 { didSet { save(); onChanged?() } }
-    var glowFadeTime = 0.35 { didSet { save(); onChanged?() } }
+    var coreFadeTime = TrailSettingsDefaults.coreFadeTime { didSet { save(); onChanged?() } }
+    var glowFadeTime = TrailSettingsDefaults.glowFadeTime { didSet { save(); onChanged?() } }
 
     // MARK: - Core Trail Color (RGB components)
 
-    var coreTrailR = 1.0 { didSet { save(); onChanged?() } }
-    var coreTrailG = 0.15 { didSet { save(); onChanged?() } }
-    var coreTrailB = 0.1 { didSet { save(); onChanged?() } }
+    var coreTrailR = TrailSettingsDefaults.coreTrailR { didSet { save(); onChanged?() } }
+    var coreTrailG = TrailSettingsDefaults.coreTrailG { didSet { save(); onChanged?() } }
+    var coreTrailB = TrailSettingsDefaults.coreTrailB { didSet { save(); onChanged?() } }
 
     // MARK: - Glow Trail Color (RGB components)
 
-    var glowTrailR = 0.1 { didSet { save(); onChanged?() } }
-    var glowTrailG = 0.5 { didSet { save(); onChanged?() } }
-    var glowTrailB = 1.0 { didSet { save(); onChanged?() } }
+    var glowTrailR = TrailSettingsDefaults.glowTrailR { didSet { save(); onChanged?() } }
+    var glowTrailG = TrailSettingsDefaults.glowTrailG { didSet { save(); onChanged?() } }
+    var glowTrailB = TrailSettingsDefaults.glowTrailB { didSet { save(); onChanged?() } }
 
     // MARK: - Glow Trail Opacity
 
-    var glowOuterOpacity = 0.02 { didSet { save(); onChanged?() } }
-    var glowMiddleOpacity = 0.08 { didSet { save(); onChanged?() } }
+    var glowOuterOpacity = TrailSettingsDefaults.glowOuterOpacity { didSet { save(); onChanged?() } }
+    var glowMiddleOpacity = TrailSettingsDefaults.glowMiddleOpacity { didSet { save(); onChanged?() } }
 
     // MARK: - Crosshair Appearance
 
-    var crosshairR = 1.0 { didSet { save(); onChanged?() } }
-    var crosshairG = 1.0 { didSet { save(); onChanged?() } }
-    var crosshairB = 1.0 { didSet { save(); onChanged?() } }
-    var crosshairOpacity = 0.3 { didSet { save(); onChanged?() } }
-    var crosshairLineWidth = 1.0 { didSet { save(); onChanged?() } }
+    var crosshairR = TrailSettingsDefaults.crosshairR { didSet { save(); onChanged?() } }
+    var crosshairG = TrailSettingsDefaults.crosshairG { didSet { save(); onChanged?() } }
+    var crosshairB = TrailSettingsDefaults.crosshairB { didSet { save(); onChanged?() } }
+    var crosshairOpacity = TrailSettingsDefaults.crosshairOpacity { didSet { save(); onChanged?() } }
+    var crosshairLineWidth = TrailSettingsDefaults.crosshairLineWidth { didSet { save(); onChanged?() } }
 
     // MARK: - Ripple Effect
 
-    var rippleRadius = 150.0 { didSet { save(); onChanged?() } }
-    var rippleSpeed = 120.0 { didSet { save(); onChanged?() } }
-    var rippleWavelength = 25.0 { didSet { save(); onChanged?() } }
-    var rippleDamping = 2.0 { didSet { save(); onChanged?() } }
-    var rippleAmplitude = 12.0 { didSet { save(); onChanged?() } }
-    var rippleDuration = 1.2 { didSet { save(); onChanged?() } }
-    var rippleSpecularIntensity = 0.8 { didSet { save(); onChanged?() } }
+    var rippleRadius = TrailSettingsDefaults.rippleRadius { didSet { save(); onChanged?() } }
+    var rippleSpeed = TrailSettingsDefaults.rippleSpeed { didSet { save(); onChanged?() } }
+    var rippleWavelength = TrailSettingsDefaults.rippleWavelength { didSet { save(); onChanged?() } }
+    var rippleDamping = TrailSettingsDefaults.rippleDamping { didSet { save(); onChanged?() } }
+    var rippleAmplitude = TrailSettingsDefaults.rippleAmplitude { didSet { save(); onChanged?() } }
+    var rippleDuration = TrailSettingsDefaults.rippleDuration { didSet { save(); onChanged?() } }
+    var rippleSpecularIntensity = TrailSettingsDefaults.rippleSpecularIntensity { didSet { save(); onChanged?() } }
 
     // MARK: - Performance Experiments
 
-    var reduceSyntheticSampleRate = false { didSet { save(); onChanged?() } }
-    var enableSmoothInputCoalescing = false { didSet { save(); onChanged?() } }
-    var useReducedLayerStack = false { didSet { save(); onChanged?() } }
-    var onlyUpdateDirtyScreens = false { didSet { save(); onChanged?() } }
-    var useLinearSmoothPlaybackLookup = false { didSet { save(); onChanged?() } }
-    var useStrongerPointDecimation = false { didSet { save(); onChanged?() } }
-    var useRelaxedPathRebuild = false { didSet { save(); onChanged?() } }
-    var capTrailRenderingTo60FPS = false { didSet { save(); onChanged?() } }
+    var reduceSyntheticSampleRate = TrailSettingsDefaults.reduceSyntheticSampleRate { didSet { save(); onChanged?() } }
+    var enableSmoothInputCoalescing = TrailSettingsDefaults.enableSmoothInputCoalescing { didSet { save(); onChanged?() } }
+    var useReducedLayerStack = TrailSettingsDefaults.useReducedLayerStack { didSet { save(); onChanged?() } }
+    var onlyUpdateDirtyScreens = TrailSettingsDefaults.onlyUpdateDirtyScreens { didSet { save(); onChanged?() } }
+    var useLinearSmoothPlaybackLookup = TrailSettingsDefaults.useLinearSmoothPlaybackLookup { didSet { save(); onChanged?() } }
+    var useStrongerPointDecimation = TrailSettingsDefaults.useStrongerPointDecimation { didSet { save(); onChanged?() } }
+    var useRelaxedPathRebuild = TrailSettingsDefaults.useRelaxedPathRebuild { didSet { save(); onChanged?() } }
+    var capTrailRenderingTo60FPS = TrailSettingsDefaults.capTrailRenderingTo60FPS { didSet { save(); onChanged?() } }
 
     // MARK: - Computed Colors
 
@@ -415,46 +492,46 @@ class TrailSettings {
 
     func resetToDefaults() {
         isSuppressingCallbacks = true
-        maxWidth = 8.0
-        glowWidthMultiplier = 3.5
-        trailAlgorithm = .smooth
-        movementThreshold = 30.0
-        minimumVelocity = 0.0
-        coreFadeTime = 0.6
-        glowFadeTime = 0.35
-        glowOuterOpacity = 0.02
-        glowMiddleOpacity = 0.08
-        coreTrailR = 1.0
-        coreTrailG = 0.15
-        coreTrailB = 0.1
-        glowTrailR = 0.1
-        glowTrailG = 0.5
-        glowTrailB = 1.0
-        isTrailVisible = true
-        isRippleEnabled = false
-        isCrosshairVisible = false
-        crosshairR = 1.0
-        crosshairG = 1.0
-        crosshairB = 1.0
-        crosshairOpacity = 0.3
-        crosshairLineWidth = 1.0
-        isShakeToggleEnabled = false
-        logLevelRaw = 1
-        rippleRadius = 150.0
-        rippleSpeed = 120.0
-        rippleWavelength = 25.0
-        rippleDamping = 2.0
-        rippleAmplitude = 12.0
-        rippleDuration = 1.2
-        rippleSpecularIntensity = 0.8
-        reduceSyntheticSampleRate = false
-        enableSmoothInputCoalescing = false
-        useReducedLayerStack = false
-        onlyUpdateDirtyScreens = false
-        useLinearSmoothPlaybackLookup = false
-        useStrongerPointDecimation = false
-        useRelaxedPathRebuild = false
-        capTrailRenderingTo60FPS = false
+        maxWidth = TrailSettingsDefaults.maxWidth
+        glowWidthMultiplier = TrailSettingsDefaults.glowWidthMultiplier
+        trailAlgorithm = TrailSettingsDefaults.trailAlgorithm
+        movementThreshold = TrailSettingsDefaults.movementThreshold
+        minimumVelocity = TrailSettingsDefaults.minimumVelocity
+        coreFadeTime = TrailSettingsDefaults.coreFadeTime
+        glowFadeTime = TrailSettingsDefaults.glowFadeTime
+        glowOuterOpacity = TrailSettingsDefaults.glowOuterOpacity
+        glowMiddleOpacity = TrailSettingsDefaults.glowMiddleOpacity
+        coreTrailR = TrailSettingsDefaults.coreTrailR
+        coreTrailG = TrailSettingsDefaults.coreTrailG
+        coreTrailB = TrailSettingsDefaults.coreTrailB
+        glowTrailR = TrailSettingsDefaults.glowTrailR
+        glowTrailG = TrailSettingsDefaults.glowTrailG
+        glowTrailB = TrailSettingsDefaults.glowTrailB
+        isTrailVisible = TrailSettingsDefaults.isTrailVisible
+        isRippleEnabled = TrailSettingsDefaults.isRippleEnabled
+        isCrosshairVisible = TrailSettingsDefaults.isCrosshairVisible
+        crosshairR = TrailSettingsDefaults.crosshairR
+        crosshairG = TrailSettingsDefaults.crosshairG
+        crosshairB = TrailSettingsDefaults.crosshairB
+        crosshairOpacity = TrailSettingsDefaults.crosshairOpacity
+        crosshairLineWidth = TrailSettingsDefaults.crosshairLineWidth
+        isShakeToggleEnabled = TrailSettingsDefaults.isShakeToggleEnabled
+        logLevelRaw = TrailSettingsDefaults.logLevelRaw
+        rippleRadius = TrailSettingsDefaults.rippleRadius
+        rippleSpeed = TrailSettingsDefaults.rippleSpeed
+        rippleWavelength = TrailSettingsDefaults.rippleWavelength
+        rippleDamping = TrailSettingsDefaults.rippleDamping
+        rippleAmplitude = TrailSettingsDefaults.rippleAmplitude
+        rippleDuration = TrailSettingsDefaults.rippleDuration
+        rippleSpecularIntensity = TrailSettingsDefaults.rippleSpecularIntensity
+        reduceSyntheticSampleRate = TrailSettingsDefaults.reduceSyntheticSampleRate
+        enableSmoothInputCoalescing = TrailSettingsDefaults.enableSmoothInputCoalescing
+        useReducedLayerStack = TrailSettingsDefaults.useReducedLayerStack
+        onlyUpdateDirtyScreens = TrailSettingsDefaults.onlyUpdateDirtyScreens
+        useLinearSmoothPlaybackLookup = TrailSettingsDefaults.useLinearSmoothPlaybackLookup
+        useStrongerPointDecimation = TrailSettingsDefaults.useStrongerPointDecimation
+        useRelaxedPathRebuild = TrailSettingsDefaults.useRelaxedPathRebuild
+        capTrailRenderingTo60FPS = TrailSettingsDefaults.capTrailRenderingTo60FPS
         isSuppressingCallbacks = false
         save()
         onChanged?()
