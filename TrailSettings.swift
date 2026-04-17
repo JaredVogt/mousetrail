@@ -14,6 +14,36 @@ enum TrailAlgorithm: String, CaseIterable, Codable {
     }
 }
 
+/// Unified color storage: keeps R/G/B as mutable fields but round-trips
+/// through a `#RRGGBB` hex string for persistence and presets.
+struct HexColor: Equatable {
+    var r: Double
+    var g: Double
+    var b: Double
+
+    init(r: Double, g: Double, b: Double) {
+        self.r = min(1, max(0, r))
+        self.g = min(1, max(0, g))
+        self.b = min(1, max(0, b))
+    }
+
+    init?(hex: String) {
+        var s = hex.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
+        self.r = Double((v >> 16) & 0xFF) / 255
+        self.g = Double((v >> 8) & 0xFF) / 255
+        self.b = Double(v & 0xFF) / 255
+    }
+
+    var hex: String {
+        let ri = Int((r * 255).rounded())
+        let gi = Int((g * 255).rounded())
+        let bi = Int((b * 255).rounded())
+        return String(format: "#%02X%02X%02X", ri, gi, bi)
+    }
+}
+
 /// Single source of truth for `TrailSettings` default values.
 enum TrailSettingsDefaults {
     // Visibility
@@ -50,24 +80,18 @@ enum TrailSettingsDefaults {
     static let coreFadeTime = 0.6
     static let glowFadeTime = 0.35
 
-    // Core color
-    static let coreTrailR = 1.0
-    static let coreTrailG = 0.15
-    static let coreTrailB = 0.1
+    // Core color (hex preserves current defaults: R=1.0, G=0.15, B=0.1)
+    static let coreTrailHex = "#FF261A"
 
-    // Glow color
-    static let glowTrailR = 0.1
-    static let glowTrailG = 0.5
-    static let glowTrailB = 1.0
+    // Glow color (R=0.1, G=0.5, B=1.0)
+    static let glowTrailHex = "#1A80FF"
 
     // Glow opacity
     static let glowOuterOpacity = 0.02
     static let glowMiddleOpacity = 0.08
 
     // Crosshair
-    static let crosshairR = 1.0
-    static let crosshairG = 1.0
-    static let crosshairB = 1.0
+    static let crosshairHex = "#FFFFFF"
     static let crosshairOpacity = 0.3
     static let crosshairLineWidth = 1.0
 
@@ -155,17 +179,10 @@ class TrailSettings {
     var coreFadeTime = TrailSettingsDefaults.coreFadeTime { didSet { save(); notify(.appearance) } }
     var glowFadeTime = TrailSettingsDefaults.glowFadeTime { didSet { save(); notify(.appearance) } }
 
-    // MARK: - Core Trail Color (RGB components)
+    // MARK: - Trail Colors (single stored HexColor per color; R/G/B exposed via computed accessors below)
 
-    var coreTrailR = TrailSettingsDefaults.coreTrailR { didSet { save(); notify(.appearance) } }
-    var coreTrailG = TrailSettingsDefaults.coreTrailG { didSet { save(); notify(.appearance) } }
-    var coreTrailB = TrailSettingsDefaults.coreTrailB { didSet { save(); notify(.appearance) } }
-
-    // MARK: - Glow Trail Color (RGB components)
-
-    var glowTrailR = TrailSettingsDefaults.glowTrailR { didSet { save(); notify(.appearance) } }
-    var glowTrailG = TrailSettingsDefaults.glowTrailG { didSet { save(); notify(.appearance) } }
-    var glowTrailB = TrailSettingsDefaults.glowTrailB { didSet { save(); notify(.appearance) } }
+    var coreTrailColorValue = HexColor(hex: TrailSettingsDefaults.coreTrailHex)! { didSet { save(); notify(.appearance) } }
+    var glowTrailColorValue = HexColor(hex: TrailSettingsDefaults.glowTrailHex)! { didSet { save(); notify(.appearance) } }
 
     // MARK: - Glow Trail Opacity
 
@@ -174,11 +191,20 @@ class TrailSettings {
 
     // MARK: - Crosshair Appearance
 
-    var crosshairR = TrailSettingsDefaults.crosshairR { didSet { save(); notify(.appearance) } }
-    var crosshairG = TrailSettingsDefaults.crosshairG { didSet { save(); notify(.appearance) } }
-    var crosshairB = TrailSettingsDefaults.crosshairB { didSet { save(); notify(.appearance) } }
+    var crosshairColorValue = HexColor(hex: TrailSettingsDefaults.crosshairHex)! { didSet { save(); notify(.appearance) } }
     var crosshairOpacity = TrailSettingsDefaults.crosshairOpacity { didSet { save(); notify(.appearance) } }
     var crosshairLineWidth = TrailSettingsDefaults.crosshairLineWidth { didSet { save(); notify(.appearance) } }
+
+    // Computed R/G/B accessors — writing a field mutates the stored HexColor, which triggers its didSet.
+    var coreTrailR: Double { get { coreTrailColorValue.r } set { coreTrailColorValue.r = newValue } }
+    var coreTrailG: Double { get { coreTrailColorValue.g } set { coreTrailColorValue.g = newValue } }
+    var coreTrailB: Double { get { coreTrailColorValue.b } set { coreTrailColorValue.b = newValue } }
+    var glowTrailR: Double { get { glowTrailColorValue.r } set { glowTrailColorValue.r = newValue } }
+    var glowTrailG: Double { get { glowTrailColorValue.g } set { glowTrailColorValue.g = newValue } }
+    var glowTrailB: Double { get { glowTrailColorValue.b } set { glowTrailColorValue.b = newValue } }
+    var crosshairR: Double { get { crosshairColorValue.r } set { crosshairColorValue.r = newValue } }
+    var crosshairG: Double { get { crosshairColorValue.g } set { crosshairColorValue.g = newValue } }
+    var crosshairB: Double { get { crosshairColorValue.b } set { crosshairColorValue.b = newValue } }
 
     // MARK: - Ripple Effect
 
@@ -262,18 +288,12 @@ class TrailSettings {
         static let glowFadeTime = "trail.glowFadeTime"
         static let glowOuterOpacity = "trail.glowOuterOpacity"
         static let glowMiddleOpacity = "trail.glowMiddleOpacity"
-        static let coreTrailR = "trail.coreTrailR"
-        static let coreTrailG = "trail.coreTrailG"
-        static let coreTrailB = "trail.coreTrailB"
-        static let glowTrailR = "trail.glowTrailR"
-        static let glowTrailG = "trail.glowTrailG"
-        static let glowTrailB = "trail.glowTrailB"
+        static let coreTrailHex = "trail.coreTrailHex"
+        static let glowTrailHex = "trail.glowTrailHex"
         static let isTrailVisible = "trail.isTrailVisible"
         static let isRippleEnabled = "trail.isRippleEnabled"
         static let isCrosshairVisible = "visibility.isCrosshairVisible"
-        static let crosshairR = "crosshair.r"
-        static let crosshairG = "crosshair.g"
-        static let crosshairB = "crosshair.b"
+        static let crosshairHex = "crosshair.hex"
         static let crosshairOpacity = "crosshair.opacity"
         static let crosshairLineWidth = "crosshair.lineWidth"
         static let isShakeToggleEnabled = "input.isShakeToggleEnabled"
@@ -350,18 +370,12 @@ class TrailSettings {
         d.set(glowFadeTime, forKey: Keys.glowFadeTime)
         d.set(glowOuterOpacity, forKey: Keys.glowOuterOpacity)
         d.set(glowMiddleOpacity, forKey: Keys.glowMiddleOpacity)
-        d.set(coreTrailR, forKey: Keys.coreTrailR)
-        d.set(coreTrailG, forKey: Keys.coreTrailG)
-        d.set(coreTrailB, forKey: Keys.coreTrailB)
-        d.set(glowTrailR, forKey: Keys.glowTrailR)
-        d.set(glowTrailG, forKey: Keys.glowTrailG)
-        d.set(glowTrailB, forKey: Keys.glowTrailB)
+        d.set(coreTrailColorValue.hex, forKey: Keys.coreTrailHex)
+        d.set(glowTrailColorValue.hex, forKey: Keys.glowTrailHex)
         d.set(isTrailVisible, forKey: Keys.isTrailVisible)
         d.set(isRippleEnabled, forKey: Keys.isRippleEnabled)
         d.set(isCrosshairVisible, forKey: Keys.isCrosshairVisible)
-        d.set(crosshairR, forKey: Keys.crosshairR)
-        d.set(crosshairG, forKey: Keys.crosshairG)
-        d.set(crosshairB, forKey: Keys.crosshairB)
+        d.set(crosshairColorValue.hex, forKey: Keys.crosshairHex)
         d.set(crosshairOpacity, forKey: Keys.crosshairOpacity)
         d.set(crosshairLineWidth, forKey: Keys.crosshairLineWidth)
         d.set(isShakeToggleEnabled, forKey: Keys.isShakeToggleEnabled)
@@ -418,18 +432,12 @@ class TrailSettings {
         if d.object(forKey: Keys.glowFadeTime) != nil { glowFadeTime = d.double(forKey: Keys.glowFadeTime) }
         if d.object(forKey: Keys.glowOuterOpacity) != nil { glowOuterOpacity = d.double(forKey: Keys.glowOuterOpacity) }
         if d.object(forKey: Keys.glowMiddleOpacity) != nil { glowMiddleOpacity = d.double(forKey: Keys.glowMiddleOpacity) }
-        if d.object(forKey: Keys.coreTrailR) != nil { coreTrailR = d.double(forKey: Keys.coreTrailR) }
-        if d.object(forKey: Keys.coreTrailG) != nil { coreTrailG = d.double(forKey: Keys.coreTrailG) }
-        if d.object(forKey: Keys.coreTrailB) != nil { coreTrailB = d.double(forKey: Keys.coreTrailB) }
-        if d.object(forKey: Keys.glowTrailR) != nil { glowTrailR = d.double(forKey: Keys.glowTrailR) }
-        if d.object(forKey: Keys.glowTrailG) != nil { glowTrailG = d.double(forKey: Keys.glowTrailG) }
-        if d.object(forKey: Keys.glowTrailB) != nil { glowTrailB = d.double(forKey: Keys.glowTrailB) }
+        if let s = d.string(forKey: Keys.coreTrailHex), let c = HexColor(hex: s) { coreTrailColorValue = c }
+        if let s = d.string(forKey: Keys.glowTrailHex), let c = HexColor(hex: s) { glowTrailColorValue = c }
         if d.object(forKey: Keys.isTrailVisible) != nil { isTrailVisible = d.bool(forKey: Keys.isTrailVisible) }
         if d.object(forKey: Keys.isRippleEnabled) != nil { isRippleEnabled = d.bool(forKey: Keys.isRippleEnabled) }
         if d.object(forKey: Keys.isCrosshairVisible) != nil { isCrosshairVisible = d.bool(forKey: Keys.isCrosshairVisible) }
-        if d.object(forKey: Keys.crosshairR) != nil { crosshairR = d.double(forKey: Keys.crosshairR) }
-        if d.object(forKey: Keys.crosshairG) != nil { crosshairG = d.double(forKey: Keys.crosshairG) }
-        if d.object(forKey: Keys.crosshairB) != nil { crosshairB = d.double(forKey: Keys.crosshairB) }
+        if let s = d.string(forKey: Keys.crosshairHex), let c = HexColor(hex: s) { crosshairColorValue = c }
         if d.object(forKey: Keys.crosshairOpacity) != nil { crosshairOpacity = d.double(forKey: Keys.crosshairOpacity) }
         if d.object(forKey: Keys.crosshairLineWidth) != nil { crosshairLineWidth = d.double(forKey: Keys.crosshairLineWidth) }
         if d.object(forKey: Keys.isShakeToggleEnabled) != nil { isShakeToggleEnabled = d.bool(forKey: Keys.isShakeToggleEnabled) }
@@ -476,12 +484,8 @@ class TrailSettings {
         minimumVelocity = preset.minimumVelocity
         coreFadeTime = preset.coreFadeTime
         glowFadeTime = preset.glowFadeTime
-        coreTrailR = preset.coreTrailR
-        coreTrailG = preset.coreTrailG
-        coreTrailB = preset.coreTrailB
-        glowTrailR = preset.glowTrailR
-        glowTrailG = preset.glowTrailG
-        glowTrailB = preset.glowTrailB
+        coreTrailColorValue = HexColor(hex: preset.coreTrailHex) ?? coreTrailColorValue
+        glowTrailColorValue = HexColor(hex: preset.glowTrailHex) ?? glowTrailColorValue
         glowOuterOpacity = preset.glowOuterOpacity
         glowMiddleOpacity = preset.glowMiddleOpacity
         rippleRadius = preset.rippleRadius
@@ -492,9 +496,7 @@ class TrailSettings {
         rippleDuration = preset.rippleDuration
         rippleSpecularIntensity = preset.rippleSpecularIntensity
         isShakeToggleEnabled = preset.isShakeToggleEnabled
-        crosshairR = preset.crosshairR
-        crosshairG = preset.crosshairG
-        crosshairB = preset.crosshairB
+        crosshairColorValue = HexColor(hex: preset.crosshairHex) ?? crosshairColorValue
         crosshairOpacity = preset.crosshairOpacity
         crosshairLineWidth = preset.crosshairLineWidth
         isSuppressingCallbacks = false
@@ -514,18 +516,12 @@ class TrailSettings {
         glowFadeTime = TrailSettingsDefaults.glowFadeTime
         glowOuterOpacity = TrailSettingsDefaults.glowOuterOpacity
         glowMiddleOpacity = TrailSettingsDefaults.glowMiddleOpacity
-        coreTrailR = TrailSettingsDefaults.coreTrailR
-        coreTrailG = TrailSettingsDefaults.coreTrailG
-        coreTrailB = TrailSettingsDefaults.coreTrailB
-        glowTrailR = TrailSettingsDefaults.glowTrailR
-        glowTrailG = TrailSettingsDefaults.glowTrailG
-        glowTrailB = TrailSettingsDefaults.glowTrailB
+        coreTrailColorValue = HexColor(hex: TrailSettingsDefaults.coreTrailHex)!
+        glowTrailColorValue = HexColor(hex: TrailSettingsDefaults.glowTrailHex)!
         isTrailVisible = TrailSettingsDefaults.isTrailVisible
         isRippleEnabled = TrailSettingsDefaults.isRippleEnabled
         isCrosshairVisible = TrailSettingsDefaults.isCrosshairVisible
-        crosshairR = TrailSettingsDefaults.crosshairR
-        crosshairG = TrailSettingsDefaults.crosshairG
-        crosshairB = TrailSettingsDefaults.crosshairB
+        crosshairColorValue = HexColor(hex: TrailSettingsDefaults.crosshairHex)!
         crosshairOpacity = TrailSettingsDefaults.crosshairOpacity
         crosshairLineWidth = TrailSettingsDefaults.crosshairLineWidth
         isShakeToggleEnabled = TrailSettingsDefaults.isShakeToggleEnabled

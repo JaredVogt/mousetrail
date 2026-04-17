@@ -11,10 +11,25 @@ class PresetManager {
     private enum Keys {
         static let presets = "presets.list"
         static let activePresetID = "presets.activeID"
+        static let schemaVersion = "presets.schemaVersion"
     }
 
+    /// Bump when the preset serialization format changes incompatibly.
+    /// v2: colors stored as hex strings instead of R/G/B triples.
+    private static let currentSchemaVersion = 2
+
     init() {
+        wipeIfStaleSchema()
         loadFromDisk()
+    }
+
+    private func wipeIfStaleSchema() {
+        let d = UserDefaults.standard
+        if d.integer(forKey: Keys.schemaVersion) < Self.currentSchemaVersion {
+            d.removeObject(forKey: Keys.presets)
+            d.removeObject(forKey: Keys.activePresetID)
+            d.set(Self.currentSchemaVersion, forKey: Keys.schemaVersion)
+        }
     }
 
     // MARK: - CRUD
@@ -45,17 +60,11 @@ class PresetManager {
             minimumVelocity: settings.minimumVelocity,
             coreFadeTime: settings.coreFadeTime,
             glowFadeTime: settings.glowFadeTime,
-            coreTrailR: settings.coreTrailR,
-            coreTrailG: settings.coreTrailG,
-            coreTrailB: settings.coreTrailB,
-            glowTrailR: settings.glowTrailR,
-            glowTrailG: settings.glowTrailG,
-            glowTrailB: settings.glowTrailB,
+            coreTrailHex: settings.coreTrailColorValue.hex,
+            glowTrailHex: settings.glowTrailColorValue.hex,
             glowOuterOpacity: settings.glowOuterOpacity,
             glowMiddleOpacity: settings.glowMiddleOpacity,
-            crosshairR: settings.crosshairR,
-            crosshairG: settings.crosshairG,
-            crosshairB: settings.crosshairB,
+            crosshairHex: settings.crosshairColorValue.hex,
             crosshairOpacity: settings.crosshairOpacity,
             crosshairLineWidth: settings.crosshairLineWidth,
             rippleRadius: settings.rippleRadius,

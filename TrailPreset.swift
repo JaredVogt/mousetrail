@@ -25,24 +25,18 @@ struct TrailPreset: Codable, Identifiable, Equatable {
     var coreFadeTime: Double
     var glowFadeTime: Double
 
-    // Red Trail Color
-    var coreTrailR: Double
-    var coreTrailG: Double
-    var coreTrailB: Double
+    // Core Trail Color (hex: #RRGGBB)
+    var coreTrailHex: String
 
-    // Blue Trail Color
-    var glowTrailR: Double
-    var glowTrailG: Double
-    var glowTrailB: Double
+    // Glow Trail Color (hex: #RRGGBB)
+    var glowTrailHex: String
 
-    // Blue Glow Opacity
+    // Glow Opacity
     var glowOuterOpacity: Double
     var glowMiddleOpacity: Double
 
     // Crosshair Appearance
-    var crosshairR: Double
-    var crosshairG: Double
-    var crosshairB: Double
+    var crosshairHex: String
     var crosshairOpacity: Double
     var crosshairLineWidth: Double
 
@@ -68,17 +62,11 @@ struct TrailPreset: Codable, Identifiable, Equatable {
             && minimumVelocity == other.minimumVelocity
             && coreFadeTime == other.coreFadeTime
             && glowFadeTime == other.glowFadeTime
-            && coreTrailR == other.coreTrailR
-            && coreTrailG == other.coreTrailG
-            && coreTrailB == other.coreTrailB
-            && glowTrailR == other.glowTrailR
-            && glowTrailG == other.glowTrailG
-            && glowTrailB == other.glowTrailB
+            && coreTrailHex == other.coreTrailHex
+            && glowTrailHex == other.glowTrailHex
             && glowOuterOpacity == other.glowOuterOpacity
             && glowMiddleOpacity == other.glowMiddleOpacity
-            && crosshairR == other.crosshairR
-            && crosshairG == other.crosshairG
-            && crosshairB == other.crosshairB
+            && crosshairHex == other.crosshairHex
             && crosshairOpacity == other.crosshairOpacity
             && crosshairLineWidth == other.crosshairLineWidth
             && rippleRadius == other.rippleRadius
@@ -108,17 +96,11 @@ extension TrailPreset {
         case minimumVelocity
         case coreFadeTime
         case glowFadeTime
-        case coreTrailR
-        case coreTrailG
-        case coreTrailB
-        case glowTrailR
-        case glowTrailG
-        case glowTrailB
+        case coreTrailHex
+        case glowTrailHex
         case glowOuterOpacity
         case glowMiddleOpacity
-        case crosshairR
-        case crosshairG
-        case crosshairB
+        case crosshairHex
         case crosshairOpacity
         case crosshairLineWidth
         case rippleRadius
@@ -147,17 +129,11 @@ extension TrailPreset {
         minimumVelocity = try container.decode(Double.self, forKey: .minimumVelocity)
         coreFadeTime = try container.decode(Double.self, forKey: .coreFadeTime)
         glowFadeTime = try container.decode(Double.self, forKey: .glowFadeTime)
-        coreTrailR = try container.decode(Double.self, forKey: .coreTrailR)
-        coreTrailG = try container.decode(Double.self, forKey: .coreTrailG)
-        coreTrailB = try container.decode(Double.self, forKey: .coreTrailB)
-        glowTrailR = try container.decode(Double.self, forKey: .glowTrailR)
-        glowTrailG = try container.decode(Double.self, forKey: .glowTrailG)
-        glowTrailB = try container.decode(Double.self, forKey: .glowTrailB)
+        coreTrailHex = try container.decode(String.self, forKey: .coreTrailHex)
+        glowTrailHex = try container.decode(String.self, forKey: .glowTrailHex)
         glowOuterOpacity = try container.decode(Double.self, forKey: .glowOuterOpacity)
         glowMiddleOpacity = try container.decode(Double.self, forKey: .glowMiddleOpacity)
-        crosshairR = try container.decodeIfPresent(Double.self, forKey: .crosshairR) ?? 1.0
-        crosshairG = try container.decodeIfPresent(Double.self, forKey: .crosshairG) ?? 1.0
-        crosshairB = try container.decodeIfPresent(Double.self, forKey: .crosshairB) ?? 1.0
+        crosshairHex = try container.decode(String.self, forKey: .crosshairHex)
         crosshairOpacity = try container.decodeIfPresent(Double.self, forKey: .crosshairOpacity) ?? 0.3
         crosshairLineWidth = try container.decodeIfPresent(Double.self, forKey: .crosshairLineWidth) ?? 1.0
         rippleRadius = try container.decodeIfPresent(Double.self, forKey: .rippleRadius) ?? 150.0
@@ -185,17 +161,11 @@ extension TrailPreset {
         self.minimumVelocity = settings.minimumVelocity
         self.coreFadeTime = settings.coreFadeTime
         self.glowFadeTime = settings.glowFadeTime
-        self.coreTrailR = settings.coreTrailR
-        self.coreTrailG = settings.coreTrailG
-        self.coreTrailB = settings.coreTrailB
-        self.glowTrailR = settings.glowTrailR
-        self.glowTrailG = settings.glowTrailG
-        self.glowTrailB = settings.glowTrailB
+        self.coreTrailHex = settings.coreTrailColorValue.hex
+        self.glowTrailHex = settings.glowTrailColorValue.hex
         self.glowOuterOpacity = settings.glowOuterOpacity
         self.glowMiddleOpacity = settings.glowMiddleOpacity
-        self.crosshairR = settings.crosshairR
-        self.crosshairG = settings.crosshairG
-        self.crosshairB = settings.crosshairB
+        self.crosshairHex = settings.crosshairColorValue.hex
         self.crosshairOpacity = settings.crosshairOpacity
         self.crosshairLineWidth = settings.crosshairLineWidth
         self.rippleRadius = settings.rippleRadius
