@@ -5,7 +5,7 @@
 import Cocoa
 
 // Build timestamp - update this when making changes
-let BUILD_TIMESTAMP = "2026-04-17 00:43:02"
+let BUILD_TIMESTAMP = "2026-05-03 20:25:29"
 
 @inline(__always)
 func currentMonotonicTime() -> TimeInterval {
@@ -41,6 +41,7 @@ struct PerformanceExperimentConfig {
     let useStrongerPointDecimation: Bool
     let useRelaxedPathRebuild: Bool
     let capTrailRenderingTo60FPS: Bool
+    let disableLayerShadows: Bool
 
     init(settings: TrailSettings) {
         reduceSyntheticSampleRate = settings.reduceSyntheticSampleRate
@@ -51,6 +52,7 @@ struct PerformanceExperimentConfig {
         useStrongerPointDecimation = settings.useStrongerPointDecimation
         useRelaxedPathRebuild = settings.useRelaxedPathRebuild
         capTrailRenderingTo60FPS = settings.capTrailRenderingTo60FPS
+        disableLayerShadows = settings.disableLayerShadows
     }
 
     func mouseCoalescingEnabled(for algorithm: TrailAlgorithm) -> Bool {

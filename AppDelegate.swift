@@ -39,6 +39,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
     /// Active animation driver (display-linked when available, timer fallback otherwise).
     private var animationDriver: AnimationDriver?
 
+    /// Screen the current display link is bound to. Tracked so the link can be
+    /// rebound when the cursor (and the trail window) crosses to a different
+    /// screen — `NSWindow.displayLink(target:selector:)` returns a link bound
+    /// to the screen the window is on at call time and doesn't auto-update.
+    private var displayLinkScreen: NSScreen?
+
     // MARK: - Menu Bar Properties
 
     /// Trail settings (shared with SwiftUI MenuBarExtra)
@@ -62,8 +68,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
     /// Manages per-screen trail overlay windows and views.
     let trailWindowManager = TrailWindowManager()
 
+    /// Manages per-screen crosshair overlay windows and views.
+    let crosshairWindowManager = CrosshairWindowManager()
+
     var trailWindows: [NSPanel] { trailWindowManager.windows }
     var trailViews: [TrailView] { trailWindowManager.views }
+    var crosshairWindows: [NSPanel] { crosshairWindowManager.windows }
+    var crosshairViews: [CrosshairView] { crosshairWindowManager.views }
 
     // MARK: - Ripple Effect Properties
 
@@ -92,6 +103,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
 
     /// Whether visuals are currently suppressed by a shake gesture (ephemeral, not persisted)
     var isShakeSuppressed = false
+
+    /// Auto-restore visuals this many seconds after a gesture suppression. Wall-clock; fires
+    /// immediately on wake if the deadline passed during sleep.
+    private static let autoRestoreInterval: TimeInterval = 15 * 60
+
+    /// Pending auto-restore timer; nil when not scheduled.
+    private var autoRestoreTimer: DispatchSourceTimer?
 
     /// Active calibration session (nil when not calibrating)
     var calibrationSession: CalibrationSession? = nil
@@ -212,12 +230,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
         trailView.coreColor = settings.coreTrailNSColor
         trailView.glowColor = settings.glowTrailNSColor
         trailView.usesReducedLayerStack = experiments.useReducedLayerStack
-        trailView.isCrosshairVisible = settings.isCrosshairVisible
-        trailView.applyCrosshairStyle(
+        trailView.shadowsEnabled = !experiments.disableLayerShadows
+        trailView.updateLayerProperties()
+    }
+
+    private func applyCurrentCrosshairConfiguration(to crosshairView: CrosshairView) {
+        crosshairView.isCrosshairVisible = settings.isCrosshairVisible
+        crosshairView.applyStyle(
             color: settings.crosshairNSColor,
             lineWidth: CGFloat(settings.crosshairLineWidth)
         )
-        trailView.updateLayerProperties()
     }
 
     private func handleTrailSettingsChanged() {
@@ -286,6 +308,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
             case .smooth:
                 emitDelayedTrailPoints(upTo: now)
             }
+            repositionTrailWindow()
             updateTrailAnimation(at: now)
         }
     }
@@ -553,6 +576,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
         }
     }
 
+    /// Reposition the cursor-following trail window when the cursor approaches
+    /// a window edge — but not every frame. Per-frame setFrameOrigin shows up
+    /// as visible jitter because window moves and layer updates aren't atomic
+    /// at the compositor level. Lazy repositioning keeps the window stationary
+    /// during normal cursor motion, eliminating that jitter.
+    private func repositionTrailWindow() {
+        guard let window = trailWindowManager.trailWindow else { return }
+        if window.cursorOutsideSafeZone(latestMouseLocation) {
+            window.repositionAroundCursor(latestMouseLocation)
+        }
+        rebindDisplayLinkIfScreenChanged()
+    }
+
+    private func rebindDisplayLinkIfScreenChanged() {
+        guard motionState == .active,
+              let window = trailWindowManager.trailWindow,
+              let currentScreen = window.screen else { return }
+        if currentScreen.frame == displayLinkScreen?.frame { return }
+        displayLinkScreen = currentScreen
+        setupDisplayLink()
+    }
+
     private func updateTrailAnimation(at now: TimeInterval) {
         let experiments = performanceExperimentConfig
         let minimumRenderInterval = experiments.trailRenderMinimumInterval
@@ -764,6 +809,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
 
         // Create trail windows for each screen
         createTrailWindows()
+        // Force initial reposition so the window starts centered on the cursor
+        // rather than at (0,0).
+        trailWindowManager.trailWindow?.repositionAroundCursor(latestMouseLocation)
         handleTrailSettingsChanged()
 
         logInfo("MouseTrail initialized successfully")
@@ -921,6 +969,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
             case .smooth:
                 emitDelayedTrailPoints(upTo: currentMonotonicTime())
             }
+            repositionTrailWindow()
             updateTrailAnimation(at: currentMonotonicTime())
         }
     }
@@ -945,9 +994,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
         let driver: AnimationDriver
         if #available(macOS 14.0, *), let displayWindow = trailWindows.first, displayWindow.isVisible {
             driver = DisplayLinkDriver(window: displayWindow)
+            displayLinkScreen = displayWindow.screen
         } else {
             logInfo("Falling back to 60Hz timer because AppKit display links are unavailable")
             driver = TimerDriver()
+            displayLinkScreen = nil
         }
         animationDriver = driver
         driver.start { [weak self] in
@@ -959,6 +1010,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
         animationDriver?.stop()
         animationDriver = nil
         lastTrailRenderTime = 0
+        displayLinkScreen = nil
     }
 
     // MARK: - Shake Detection
@@ -1032,18 +1084,49 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
             isShakeSuppressed.toggle()
             logInfo("Gesture toggle: visuals \(isShakeSuppressed ? "OFF" : "ON")")
             applyShakeSuppressionState()
+            if isShakeSuppressed {
+                scheduleAutoRestore()
+            } else {
+                cancelAutoRestore()
+            }
         }
+    }
+
+    /// Schedule (or reschedule) the auto-restore that flips visuals back on after the
+    /// configured interval. Replaces any existing timer.
+    private func scheduleAutoRestore() {
+        cancelAutoRestore()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + Self.autoRestoreInterval)
+        timer.setEventHandler { [weak self] in
+            guard let self = self, self.isShakeSuppressed else { return }
+            self.isShakeSuppressed = false
+            logInfo("Auto-restore fired: visuals ON")
+            self.applyShakeSuppressionState()
+            self.autoRestoreTimer = nil
+        }
+        autoRestoreTimer = timer
+        timer.resume()
+        logInfo("Auto-restore scheduled in \(Int(Self.autoRestoreInterval))s")
+    }
+
+    private func cancelAutoRestore() {
+        autoRestoreTimer?.cancel()
+        autoRestoreTimer = nil
     }
 
     func applyShakeSuppressionState() {
         if isShakeSuppressed {
             // Hide everything without touching settings or cached state
-            for trailView in trailViews {
-                trailView.isCrosshairVisible = false
-                trailView.clearCrosshair()
+            for crosshairView in crosshairViews {
+                crosshairView.isCrosshairVisible = false
+                crosshairView.clear()
             }
             for trailWindow in trailWindows {
                 trailWindow.orderOut(nil)
+            }
+            for crosshairWindow in crosshairWindows {
+                crosshairWindow.orderOut(nil)
             }
             rippleManager?.clearAllRipples()
         } else {
@@ -1115,6 +1198,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
         case .smooth:
             emitDelayedTrailPoints(upTo: now)
         }
+        repositionTrailWindow()
         updateTrailAnimation(at: now)
 
         rippleManager?.updateRipples()
@@ -1129,8 +1213,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
         guard settings.isCrosshairVisible, !isShakeSuppressed else { return }
         let mouseLocation = latestMouseLocation
 
-        for trailView in trailViews {
-            guard let window = trailView.window else { continue }
+        for crosshairView in crosshairViews {
+            guard let window = crosshairView.window else { continue }
             let screenFrame = window.frame
 
             if screenFrame.contains(mouseLocation) {
@@ -1138,9 +1222,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
                     x: mouseLocation.x - screenFrame.origin.x,
                     y: mouseLocation.y - screenFrame.origin.y
                 )
-                trailView.updateCrosshair(at: viewPoint)
+                crosshairView.update(at: viewPoint)
             } else {
-                trailView.clearCrosshair()
+                crosshairView.clear()
             }
         }
     }
@@ -1163,10 +1247,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
         resetTrailRuntimeState(to: settings.trailAlgorithm, at: currentMonotonicTime(), clearTrail: false)
     }
 
-    /// Apply current settings to all TrailView instances
+    /// Apply current settings to all TrailView and CrosshairView instances
     func applySettingsToTrailViews() {
         for trailView in trailViews {
             applyCurrentTrailConfiguration(to: trailView)
+        }
+        for crosshairView in crosshairViews {
+            applyCurrentCrosshairConfiguration(to: crosshairView)
         }
     }
 
@@ -1177,6 +1264,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
             isShakeSuppressed = false
             logInfo("Shake suppression cleared by settings change")
         }
+        // Manual setting changes always cancel a pending auto-restore so it can't
+        // fire later and "restore" something the user has since changed.
+        cancelAutoRestore()
 
         // Trail visibility
         if settings.isTrailVisible != isTrailVisible {
@@ -1184,22 +1274,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
         }
 
         // Crosshair visibility
-        for trailView in trailViews {
-            trailView.isCrosshairVisible = settings.isCrosshairVisible
+        for crosshairView in crosshairViews {
+            crosshairView.isCrosshairVisible = settings.isCrosshairVisible
         }
         if !settings.isCrosshairVisible {
-            for trailView in trailViews {
-                trailView.clearCrosshair()
+            for crosshairView in crosshairViews {
+                crosshairView.clear()
             }
         }
 
-        // Show trail windows if either trail or crosshairs are enabled
-        let shouldShowWindows = isTrailVisible || settings.isCrosshairVisible
+        // Show trail and crosshair windows independently
         for trailWindow in trailWindows {
-            if shouldShowWindows {
+            if isTrailVisible {
                 trailWindow.orderFront(nil)
             } else {
                 trailWindow.orderOut(nil)
+            }
+        }
+        for crosshairWindow in crosshairWindows {
+            if settings.isCrosshairVisible {
+                crosshairWindow.orderFront(nil)
+            } else {
+                crosshairWindow.orderOut(nil)
             }
         }
 
@@ -1228,9 +1324,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
      */
     func createTrailWindows() {
         trailWindowManager.rebuild(
-            initiallyVisible: isTrailVisible || settings.isCrosshairVisible
+            initiallyVisible: isTrailVisible
         ) { trailView in
             applyCurrentTrailConfiguration(to: trailView)
+        }
+        crosshairWindowManager.rebuild(
+            initiallyVisible: settings.isCrosshairVisible
+        ) { crosshairView in
+            applyCurrentCrosshairConfiguration(to: crosshairView)
         }
     }
 
@@ -1271,6 +1372,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SettingsEventBus {
         eventMonitorHub.removeAll()
 
         trailWindowManager.cleanup()
+        crosshairWindowManager.cleanup()
 
         rippleManager?.cleanup()
 

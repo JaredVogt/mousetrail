@@ -1,10 +1,9 @@
 import Cocoa
 
-/// Owns the per-screen trail overlay windows + views, their dirty set, and
-/// the teardown/rebuild that runs when the screen configuration changes.
-///
-/// AppDelegate calls `rebuild` with a configurator closure supplying per-view
-/// settings, and drives updates through `forEachView` / `markVisibleDirty`.
+/// Owns the trail overlay window + view. Now backed by a single
+/// MouseFollowingWindow that's small and tracks the cursor, so layer-shadow
+/// blur cost no longer scales with screen resolution. Storage stays as arrays
+/// (count: 0 or 1) so call sites that iterate continue to work unchanged.
 final class TrailWindowManager {
     private(set) var windows: [NSPanel] = []
     private(set) var views: [TrailView] = []
@@ -12,51 +11,30 @@ final class TrailWindowManager {
     /// Trail views that received content recently and still need rendering.
     var dirtyIndices: Set<Int> = []
 
-    /// Tear down existing overlays and create fresh ones for the current
-    /// screen configuration. `configureView` is called once per newly created
-    /// view so the caller can apply settings-derived state.
+    /// Typed accessor for the (single) cursor-following trail window.
+    var trailWindow: MouseFollowingWindow? {
+        windows.first as? MouseFollowingWindow
+    }
+
+    /// Tear down existing overlay and create a fresh one. `configureView` is
+    /// called once on the new view so the caller can apply settings-derived
+    /// state.
     func rebuild(initiallyVisible: Bool, configureView: (TrailView) -> Void) {
         cleanup()
 
-        for screen in NSScreen.screens {
-            let screenFrame = screen.frame
+        let window = MouseFollowingWindow()
+        let viewBounds = NSRect(origin: .zero, size: window.frame.size)
+        let trailView = TrailView(frame: viewBounds)
+        trailView.wantsLayer = true
+        configureView(trailView)
+        window.contentView = trailView
 
-            let trailWindow = NSPanel(
-                contentRect: screenFrame,
-                styleMask: [.borderless, .nonactivatingPanel],
-                backing: .buffered,
-                defer: false
-            )
-
-            trailWindow.isOpaque = false
-            trailWindow.backgroundColor = .clear
-            trailWindow.level = NSWindow.Level(NSWindow.Level.statusBar.rawValue + 1)
-            trailWindow.collectionBehavior = [
-                .canJoinAllSpaces,
-                .fullScreenAuxiliary,
-                .transient,
-                .ignoresCycle,
-                .stationary
-            ]
-            trailWindow.hidesOnDeactivate = false
-            trailWindow.ignoresMouseEvents = true
-            trailWindow.hasShadow = false
-            trailWindow.isReleasedWhenClosed = false
-
-            let viewBounds = NSRect(x: 0, y: 0, width: screenFrame.width, height: screenFrame.height)
-            let trailView = TrailView(frame: viewBounds)
-            trailView.wantsLayer = true
-            configureView(trailView)
-
-            trailWindow.contentView = trailView
-
-            if initiallyVisible {
-                trailWindow.orderFront(nil)
-            }
-
-            windows.append(trailWindow)
-            views.append(trailView)
+        if initiallyVisible {
+            window.orderFront(nil)
         }
+
+        windows.append(window)
+        views.append(trailView)
     }
 
     func showWindows(_ show: Bool) {

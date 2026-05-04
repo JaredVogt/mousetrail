@@ -58,6 +58,29 @@ class TrailView: NSView {
         }
     }
 
+    /// Natural shadow opacities — used to restore the look when shadows are
+    /// re-enabled after the perf-experiment toggle disables them.
+    private static let coreOuterShadowOpacity: Float = 0.2
+    private static let coreMiddleShadowOpacity: Float = 0.3
+    private static let coreInnerShadowOpacity: Float = 0.4
+    private static let glowOuterShadowOpacity: Float = 0.1
+    private static let glowMiddleShadowOpacity: Float = 0.15
+    private static let glowInnerShadowOpacity: Float = 0.3
+
+    var shadowsEnabled = true {
+        didSet { applyShadowOpacities() }
+    }
+
+    private func applyShadowOpacities() {
+        let m: Float = shadowsEnabled ? 1.0 : 0.0
+        coreOuterLayer.shadowOpacity = Self.coreOuterShadowOpacity * m
+        coreMiddleLayer.shadowOpacity = Self.coreMiddleShadowOpacity * m
+        coreInnerLayer.shadowOpacity = Self.coreInnerShadowOpacity * m
+        glowOuterLayer.shadowOpacity = Self.glowOuterShadowOpacity * m
+        glowMiddleLayer.shadowOpacity = Self.glowMiddleShadowOpacity * m
+        glowInnerLayer.shadowOpacity = Self.glowInnerShadowOpacity * m
+    }
+
     /// Movement threshold tracking
     private var startPosition: NSPoint?
     private var isTrailActive = false
@@ -76,18 +99,6 @@ class TrailView: NSView {
     private let glowOuterLayer = CAShapeLayer()
     private let glowMiddleLayer = CAShapeLayer()
     private let glowInnerLayer = CAShapeLayer()
-
-    /// Crosshair layers
-    private let crosshairVerticalLayer = CAShapeLayer()
-    private let crosshairHorizontalLayer = CAShapeLayer()
-    private var lastCrosshairPoint: NSPoint?
-    var isCrosshairVisible = false {
-        didSet {
-            crosshairVerticalLayer.isHidden = !isCrosshairVisible
-            crosshairHorizontalLayer.isHidden = !isCrosshairVisible
-            if !isCrosshairVisible { lastCrosshairPoint = nil }
-        }
-    }
 
     private var activeCoreLayers: [CAShapeLayer] {
         usesReducedLayerStack ? [coreMiddleLayer, coreInnerLayer] : [coreOuterLayer, coreMiddleLayer, coreInnerLayer]
@@ -119,7 +130,7 @@ class TrailView: NSView {
         coreOuterLayer.lineJoin = .round
         coreOuterLayer.shadowColor = coreColor.cgColor
         coreOuterLayer.shadowRadius = 8
-        coreOuterLayer.shadowOpacity = 0.2
+        coreOuterLayer.shadowOpacity = Self.coreOuterShadowOpacity
         coreOuterLayer.shadowOffset = .zero
         coreOuterLayer.frame = bounds
         coreOuterLayer.masksToBounds = false
@@ -134,7 +145,7 @@ class TrailView: NSView {
         coreMiddleLayer.lineJoin = .round
         coreMiddleLayer.shadowColor = coreColor.cgColor
         coreMiddleLayer.shadowRadius = 3
-        coreMiddleLayer.shadowOpacity = 0.3
+        coreMiddleLayer.shadowOpacity = Self.coreMiddleShadowOpacity
         coreMiddleLayer.shadowOffset = .zero
         coreMiddleLayer.frame = bounds
         coreMiddleLayer.masksToBounds = false
@@ -149,7 +160,7 @@ class TrailView: NSView {
         coreInnerLayer.lineJoin = .round
         coreInnerLayer.shadowColor = NSColor.white.cgColor
         coreInnerLayer.shadowRadius = 1
-        coreInnerLayer.shadowOpacity = 0.4
+        coreInnerLayer.shadowOpacity = Self.coreInnerShadowOpacity
         coreInnerLayer.shadowOffset = .zero
         coreInnerLayer.frame = bounds
         coreInnerLayer.masksToBounds = false
@@ -164,7 +175,7 @@ class TrailView: NSView {
         glowOuterLayer.lineJoin = .round
         glowOuterLayer.shadowColor = glowColor.cgColor
         glowOuterLayer.shadowRadius = 10
-        glowOuterLayer.shadowOpacity = 0.1
+        glowOuterLayer.shadowOpacity = Self.glowOuterShadowOpacity
         glowOuterLayer.shadowOffset = .zero
         glowOuterLayer.frame = bounds
         glowOuterLayer.masksToBounds = false
@@ -179,7 +190,7 @@ class TrailView: NSView {
         glowMiddleLayer.lineJoin = .round
         glowMiddleLayer.shadowColor = glowColor.cgColor
         glowMiddleLayer.shadowRadius = 4
-        glowMiddleLayer.shadowOpacity = 0.15
+        glowMiddleLayer.shadowOpacity = Self.glowMiddleShadowOpacity
         glowMiddleLayer.shadowOffset = .zero
         glowMiddleLayer.frame = bounds
         glowMiddleLayer.masksToBounds = false
@@ -194,7 +205,7 @@ class TrailView: NSView {
         glowInnerLayer.lineJoin = .round
         glowInnerLayer.shadowColor = NSColor.white.cgColor
         glowInnerLayer.shadowRadius = 1
-        glowInnerLayer.shadowOpacity = 0.3
+        glowInnerLayer.shadowOpacity = Self.glowInnerShadowOpacity
         glowInnerLayer.shadowOffset = .zero
         glowInnerLayer.frame = bounds
         glowInnerLayer.masksToBounds = false
@@ -228,20 +239,6 @@ class TrailView: NSView {
 
         layer?.addSublayer(trailContainer)
 
-        // Crosshair layers — lines spanning full screen
-        crosshairVerticalLayer.fillColor = nil
-        crosshairVerticalLayer.frame = bounds
-        crosshairVerticalLayer.isHidden = true
-
-        crosshairHorizontalLayer.fillColor = nil
-        crosshairHorizontalLayer.frame = bounds
-        crosshairHorizontalLayer.isHidden = true
-
-        applyCrosshairStyle(color: NSColor.white.withAlphaComponent(0.3), lineWidth: 1.0)
-
-        layer?.addSublayer(crosshairVerticalLayer)
-        layer?.addSublayer(crosshairHorizontalLayer)
-
         updateLayerVisibility()
     }
 
@@ -251,7 +248,6 @@ class TrailView: NSView {
 
     override var frame: NSRect {
         didSet {
-            // Update all layer frames when view frame changes
             coreOuterLayer.frame = bounds
             coreMiddleLayer.frame = bounds
             coreInnerLayer.frame = bounds
@@ -259,8 +255,6 @@ class TrailView: NSView {
             glowMiddleLayer.frame = bounds
             glowInnerLayer.frame = bounds
             gradientMaskLayer.frame = bounds
-            crosshairVerticalLayer.frame = bounds
-            crosshairHorizontalLayer.frame = bounds
         }
     }
 
@@ -491,25 +485,12 @@ class TrailView: NSView {
         )
     }
 
-    /// Add a new point to the trail
+    /// Add a new point to the trail. `point` is in screen coordinates; trail
+    /// points are stored in screen space so they remain correct when the
+    /// overlay window moves under them.
     @discardableResult
     func addPoint(_ point: NSPoint, at now: TimeInterval = currentMonotonicTime()) -> Bool {
-        // Convert screen coordinates to view coordinates
-        guard let window = self.window else { return false }
-
-        // Check if the point is within this screen's bounds
-        let screenFrame = window.frame
-        guard screenFrame.insetBy(dx: -1, dy: -1).contains(point) else { return false }
-
-        // Convert to view-local coordinates
-        let viewPoint = NSPoint(
-            x: point.x - screenFrame.origin.x,
-            y: point.y - screenFrame.origin.y
-        )
-
-        // Check for inactivity timeout
         if now - lastMovementTime > inactivityTimeout {
-            // Reset trail after inactivity
             isTrailActive = false
             startPosition = nil
             points.removeAll()
@@ -517,32 +498,28 @@ class TrailView: NSView {
 
         lastMovementTime = now
 
-        // Check movement threshold
         if !isTrailActive {
             if startPosition == nil {
-                startPosition = viewPoint
-                return false  // Don't start trail yet
+                startPosition = point
+                return false
             }
 
-            // Calculate distance from start position
             if let start = startPosition {
-                let distance = pointDistance(viewPoint, start)
+                let distance = pointDistance(point, start)
 
                 if distance < movementThreshold {
-                    return false  // Still below threshold
+                    return false
                 }
 
-                // Threshold reached, activate trail
                 isTrailActive = true
             }
         }
 
-        // Calculate velocity if we have a previous point
         var velocity: CGFloat = 0
         var distanceFromLastPoint: CGFloat = 0
 
         if let lastPoint = points.last {
-            let distance = pointDistance(viewPoint, lastPoint.position)
+            let distance = pointDistance(point, lastPoint.position)
             let timeDelta = now - lastPoint.timestamp
             distanceFromLastPoint = distance
 
@@ -555,17 +532,14 @@ class TrailView: NSView {
             return false
         }
 
-        // Check if velocity is too low
         if velocity < minimumVelocity && !points.isEmpty {
-            // Reset trail if moving too slowly
             isTrailActive = false
             startPosition = nil
             points.removeAll()
             return true
         }
 
-        // Add the point to trail
-        let trailPoint = TrailPoint(position: viewPoint, timestamp: now, velocity: velocity)
+        let trailPoint = TrailPoint(position: point, timestamp: now, velocity: velocity)
         points.append(trailPoint)
 
         // Limit points
@@ -623,15 +597,20 @@ class TrailView: NSView {
 
     /// Build trail path for given points and layers
     private func buildTrailPath(for trailPoints: [TrailPoint], layers: [CAShapeLayer], isBlue: Bool = false) {
-        let renderPositions = renderPositions(from: trailPoints)
+        let positionsScreen = renderPositions(from: trailPoints)
 
-        guard renderPositions.count >= 2 else {
+        guard positionsScreen.count >= 2 else {
             clearTrailLayers(layers)
             return
         }
 
-        // Round the sampled centerline before fitting curves so quick arcs do not
-        // collapse into visible straight shortcuts between sparse input samples.
+        // Trail points are stored in screen space; translate to view-local now
+        // so the path is correct regardless of where the window is positioned.
+        let origin = window?.frame.origin ?? .zero
+        let renderPositions = positionsScreen.map {
+            NSPoint(x: $0.x - origin.x, y: $0.y - origin.y)
+        }
+
         let path = CGMutablePath()
         path.move(to: renderPositions[0])
 
@@ -662,54 +641,5 @@ class TrailView: NSView {
         }
 
         CATransaction.commit()
-    }
-
-
-    /// Update crosshair position (viewPoint is in view-local coordinates)
-    func updateCrosshair(at viewPoint: NSPoint) {
-        guard isCrosshairVisible else { return }
-
-        // Skip redundant redraws when mouse hasn't moved
-        if let last = lastCrosshairPoint,
-           abs(last.x - viewPoint.x) < 0.5 && abs(last.y - viewPoint.y) < 0.5 {
-            return
-        }
-        lastCrosshairPoint = viewPoint
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-
-        let verticalPath = CGMutablePath()
-        verticalPath.move(to: CGPoint(x: viewPoint.x, y: 0))
-        verticalPath.addLine(to: CGPoint(x: viewPoint.x, y: bounds.height))
-        crosshairVerticalLayer.path = verticalPath
-
-        let horizontalPath = CGMutablePath()
-        horizontalPath.move(to: CGPoint(x: 0, y: viewPoint.y))
-        horizontalPath.addLine(to: CGPoint(x: bounds.width, y: viewPoint.y))
-        crosshairHorizontalLayer.path = horizontalPath
-
-        CATransaction.commit()
-    }
-
-    /// Apply crosshair color and line width to both layers.
-    func applyCrosshairStyle(color: NSColor, lineWidth: CGFloat) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        crosshairVerticalLayer.strokeColor = color.cgColor
-        crosshairVerticalLayer.lineWidth = lineWidth
-        crosshairHorizontalLayer.strokeColor = color.cgColor
-        crosshairHorizontalLayer.lineWidth = lineWidth
-        CATransaction.commit()
-    }
-
-    /// Clear crosshair paths
-    func clearCrosshair() {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        crosshairVerticalLayer.path = nil
-        crosshairHorizontalLayer.path = nil
-        CATransaction.commit()
-        lastCrosshairPoint = nil
     }
 }

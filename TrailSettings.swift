@@ -113,6 +113,7 @@ enum TrailSettingsDefaults {
     static let useStrongerPointDecimation = false
     static let useRelaxedPathRebuild = false
     static let capTrailRenderingTo60FPS = false
+    static let disableLayerShadows = false
 }
 
 /// Category of a settings change, so consumers can branch without subscribing
@@ -226,6 +227,7 @@ class TrailSettings {
     var useStrongerPointDecimation = TrailSettingsDefaults.useStrongerPointDecimation { didSet { save(); notify(.appearance) } }
     var useRelaxedPathRebuild = TrailSettingsDefaults.useRelaxedPathRebuild { didSet { save(); notify(.appearance) } }
     var capTrailRenderingTo60FPS = TrailSettingsDefaults.capTrailRenderingTo60FPS { didSet { save(); notify(.appearance) } }
+    var disableLayerShadows = TrailSettingsDefaults.disableLayerShadows { didSet { save(); notify(.appearance) } }
 
     private func notify(_ delta: SettingsDelta) {
         guard !isSuppressingCallbacks else { return }
@@ -326,6 +328,7 @@ class TrailSettings {
         static let useStrongerPointDecimation = "performance.useStrongerPointDecimation"
         static let useRelaxedPathRebuild = "performance.useRelaxedPathRebuild"
         static let capTrailRenderingTo60FPS = "performance.capTrailRenderingTo60FPS"
+        static let disableLayerShadows = "performance.disableLayerShadows"
     }
 
     private var isSuppressingCallbacks = false
@@ -408,6 +411,7 @@ class TrailSettings {
         d.set(useStrongerPointDecimation, forKey: Keys.useStrongerPointDecimation)
         d.set(useRelaxedPathRebuild, forKey: Keys.useRelaxedPathRebuild)
         d.set(capTrailRenderingTo60FPS, forKey: Keys.capTrailRenderingTo60FPS)
+        d.set(disableLayerShadows, forKey: Keys.disableLayerShadows)
     }
 
     func restore() {
@@ -470,6 +474,7 @@ class TrailSettings {
         if d.object(forKey: Keys.useStrongerPointDecimation) != nil { useStrongerPointDecimation = d.bool(forKey: Keys.useStrongerPointDecimation) }
         if d.object(forKey: Keys.useRelaxedPathRebuild) != nil { useRelaxedPathRebuild = d.bool(forKey: Keys.useRelaxedPathRebuild) }
         if d.object(forKey: Keys.capTrailRenderingTo60FPS) != nil { capTrailRenderingTo60FPS = d.bool(forKey: Keys.capTrailRenderingTo60FPS) }
+        if d.object(forKey: Keys.disableLayerShadows) != nil { disableLayerShadows = d.bool(forKey: Keys.disableLayerShadows) }
     }
 
     func apply(preset: TrailPreset) {
@@ -541,6 +546,7 @@ class TrailSettings {
         useStrongerPointDecimation = TrailSettingsDefaults.useStrongerPointDecimation
         useRelaxedPathRebuild = TrailSettingsDefaults.useRelaxedPathRebuild
         capTrailRenderingTo60FPS = TrailSettingsDefaults.capTrailRenderingTo60FPS
+        disableLayerShadows = TrailSettingsDefaults.disableLayerShadows
         isSuppressingCallbacks = false
         save()
         onChange?(.appearance)
@@ -558,6 +564,7 @@ class TrailSettings {
         useStrongerPointDecimation = enabled
         useRelaxedPathRebuild = enabled
         capTrailRenderingTo60FPS = enabled
+        disableLayerShadows = enabled
         isSuppressingCallbacks = false
         save()
         onChange?(.appearance)

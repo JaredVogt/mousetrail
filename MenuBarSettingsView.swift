@@ -314,6 +314,11 @@ private struct PerformanceExperimentsSection: View {
                     isOn: $settings.useRelaxedPathRebuild
                 )
                 PerformanceExperimentToggle(
+                    "Disable layer shadow blur",
+                    description: "Skip the per-layer Gaussian blur. Trail edges will look harder but the GPU offscreen blur passes are eliminated — biggest perf win on high-DPI screens.",
+                    isOn: $settings.disableLayerShadows
+                )
+                PerformanceExperimentToggle(
                     "Cap trail rendering to 60 FPS",
                     description: "Throttle path rebuilds while leaving input processing live.",
                     isOn: $settings.capTrailRenderingTo60FPS
